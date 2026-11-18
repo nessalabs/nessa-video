@@ -1,0 +1,50 @@
+# Hairline: near-black ground, 1px grey lines, one grey accent.
+# Components are ordinary `define` blocks built from primitives, so a theme
+# pack can redraw a laptop without touching the engine.
+
+style
+  *          enter=fade exit=fade state=rest
+  edge       enter=draw exit=draw
+  box        enter=draw
+  card       enter=draw
+  circle     enter=draw
+  decision   enter=draw
+  store      enter=draw
+  title      enter=rise exit=rise font=sans-600
+  label      font=mono color=ink-3
+  code       font=mono
+  terminal   font=mono
+
+define laptop
+  layer
+    box #screen w=200 h=132 r=8
+    box #base w=256 h=16
+  label #label "{text}"
+
+define phone
+  box #screen w=52 h=106 r=10
+  label #label "{text}"
+
+define server units=3
+  col #units
+    repeat units
+      box #unit{i} w=160 h=60
+  col #procs gap=8
+    slot
+  label #label "{text}"
+
+define process note=""
+  row gap=12
+    circle #dot r=3
+    label #name "{text}"
+    label #note "{note}"
+
+define db
+  store #store
+  label #label "{text}"
+
+define queue items=3 label=""
+  col gap=8
+    repeat items
+      box #slot w=120 h=32
+    label #label "{label}"

@@ -1,0 +1,414 @@
+<title>Reel Engine Spec</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one 760px reading column, hairline rules between sections, mono for anything an agent types */
+:root{
+  --bg:#08090A; --panel:#0D0E10; --ink:#EDEDEF; --ink-2:#A3A7B0; --ink-3:#8A8F98; --line:#24262C; --line-2:#3A3D45; --hi:#F4F5F7;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#FBFBFA;--panel:#F2F2F0;--ink:#16171A;--ink-2:#45484F;--ink-3:#5E626B;--line:#E2E2DF;--line-2:#C9CAC6;--hi:#000;color-scheme:light}}
+:root[data-theme="light"]{--bg:#FBFBFA;--panel:#F2F2F0;--ink:#16171A;--ink-2:#45484F;--ink-3:#5E626B;--line:#E2E2DF;--line-2:#C9CAC6;--hi:#000;color-scheme:light}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding-block:56px 96px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:40px;line-height:1.1;letter-spacing:-.025em;font-weight:600;margin:0 0 12px;color:var(--ink-3);text-wrap:balance}
+h1 b{font-weight:600;color:var(--hi)}
+h2{font-size:22px;letter-spacing:-.01em;font-weight:600;margin:0 0 12px;text-wrap:balance}
+h3{font-size:16px;font-weight:600;margin:24px 0 8px}
+p,li{color:var(--ink-2)}
+p{margin:0 0 14px}
+strong{color:var(--ink);font-weight:500}
+section{border-top:1px solid var(--line);padding-top:36px;margin-top:40px}
+.meta{font-family:var(--mono);font-size:13px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:28px}
+.lead{font-size:18px;color:var(--ink-2)}
+code{font-family:var(--mono);font-size:.88em;color:var(--ink)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.65;color:var(--ink-2);margin:0 0 18px}
+pre .k{color:var(--hi)} pre .c{color:var(--ink-3)} pre .s{color:var(--ink)}
+.tbl{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-top:1px solid var(--line);vertical-align:top}
+thead th{border-top:0;font-weight:500;color:var(--ink-3);font-size:13px}
+td:first-child{font-family:var(--mono);font-size:13px;color:var(--ink);white-space:nowrap}
+td{color:var(--ink-2)}
+.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 24px;padding:0;margin:0;list-style:none;counter-reset:t}
+.toc li{counter-increment:t}
+.toc a{color:var(--ink-2);text-decoration:none;font-size:15px}
+.toc a::before{content:counter(t) "  ";font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+.toc a:hover,.toc a:focus-visible{color:var(--hi)}
+a:focus-visible{outline:1px solid var(--hi);outline-offset:3px;border-radius:2px}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:4px 0 20px;font-family:var(--mono);font-size:13px}
+.flow span{border:1px solid var(--line-2);border-radius:6px;padding:6px 10px;color:var(--ink)}
+.flow i{font-style:normal;color:var(--ink-3)}
+.rec{border-left:1px solid var(--line-2);padding-left:14px;margin:0 0 16px}
+.rec p{margin:0}
+ul,ol{padding-left:20px;margin:0 0 14px}
+li{margin:4px 0}
+</style>
+
+<div class="wrap">
+<div class="meta"><span>spec · draft 4</span><span>18 Nov 2026</span><span>theme 1 · hairline (locked)</span></div>
+<h1>Agents write text. <b>The engine renders the video.</b></h1>
+<p class="lead">A single Go binary that turns a short, indentation-based script into an explainer video. Built first for code-review videos: the problem, the fix, how data moves, and proof. The binary contains everything it needs, the video encoder included.</p>
+
+<ul class="toc" aria-label="Contents">
+<li><a href="#pipeline">Pipeline</a></li>
+<li><a href="#script">Script format</a></li>
+<li><a href="#selectors">Selectors and cascade</a></li>
+<li><a href="#elements">Elements</a></li>
+<li><a href="#layout">Layout</a></li>
+<li><a href="#motion">Motion and timing</a></li>
+<li><a href="#themes">Theme packs</a></li>
+<li><a href="#extend">Extending and composition</a></li>
+<li><a href="#render">Renderer and speed</a></li>
+<li><a href="#cli">CLI</a></li>
+<li><a href="#skill">Agent skill</a></li>
+<li><a href="#milestones">Milestones</a></li>
+<li><a href="#open">Open questions</a></li>
+</ul>
+
+<section id="pipeline">
+<h2>Pipeline</h2>
+<div class="flow" aria-label="Pipeline stages"><span>.reel</span><i>→</i><span>parse</span><i>→</i><span>scene graph</span><i>→</i><span>layout</span><i>→</i><span>timeline</span><i>→</i><span>raster</span><i>→</i><span>encode</span></div>
+<ul>
+<li><strong>Parse.</strong> Line-based, indentation for nesting. Every error carries a line number and a suggested fix, because agents read them.</li>
+<li><strong>Scene graph.</strong> Components from the theme pack expand into primitives here. After this step the engine only knows about primitives.</li>
+<li><strong>Layout.</strong> A flex and grid subset sizes and places everything, then connectors are routed between laid-out boxes.</li>
+<li><strong>Timeline.</strong> Verbs like <code>draw</code> and <code>focus</code> compile into property tracks. A frame is a pure function of time.</li>
+<li><strong>Raster and encode.</strong> Frames render in parallel on all cores, and unchanged frames are reused. Raw pixels are piped to an encoder.</li>
+</ul>
+</section>
+
+<section id="script">
+<h2>Script format</h2>
+<p>One file per video. The shape is meant to be easy for a model to write correctly on the first try: few symbols, no closing tags, no quoting except for visible text.</p>
+<pre><span class="k">video</span> <span class="s">"PR 482 · cache refresh"</span>
+  theme hairline
+  size 1920x1080  fps 30
+
+<span class="k">style</span>
+  process          enter=fade
+  .hot             state=focus
+  #api process.idle  state=dim
+
+<span class="k">scene</span> establish 3s
+  <span class="k">row</span> gap=240 align=center
+    laptop #web <span class="s">"laptop · web"</span>   enter=none
+    server #api <span class="s">"server · api-1"</span>  enter=fade
+  say <span class="s">"A client and ==one server=="</span>
+
+<span class="k">scene</span> request
+  #web -&gt; #api <span class="s">"GET /v1/items"</span> for=1.5s   <span class="c"># arrow draws by default</span>
+  focus #api/unit1 at=2s
+  say <span class="s">"The request travels to the server"</span>
+
+<span class="k">scene</span> inside
+  camera zoom #api for=0.8s
+  #api/procs
+    process #p1 .hot  <span class="s">"api"</span>    note=<span class="s">"2 in flight"</span>
+    process #p2       <span class="s">"cache"</span>  note=<span class="s">"running"</span>
+    process #p3 .idle <span class="s">"worker"</span> note=<span class="s">"idle"</span>
+  say <span class="s">"Zoom in: ==one process holds both requests=="</span>
+
+<span class="k">scene</span> proof
+  camera reset
+  <span class="k">row</span> gap=120
+    use #api scale=0.6
+    terminal #t
+      $ curl -i api.internal/v1/items
+      HTTP/1.1 200 OK
+      x-load: ==shared==
+  #api ..&gt; #t <span class="s">"stdout"</span>
+  type #t
+  say <span class="s">"Both callers got one shared load"</span>
+
+<span class="k">scene</span> fix
+  diff cache.go hunk=1 focus=+12..+14
+  say <span class="s">"singleflight collapses concurrent refreshes"</span></pre>
+<h3>Rules</h3>
+<ul>
+<li>A line is <code>kind #id .class "text" key=value …</code>. Only <code>kind</code> is required. Indented lines are children.</li>
+<li>Connectors are their own lines: <code>a -&gt; b</code> arrow, <code>a -| b</code> elbow, <code>a ~&gt; b</code> curve, <code>a ..&gt; b</code> dashed, <code>a &lt;-&gt; b</code> both ways, <code>a -- b</code> plain line.</li>
+<li>Inline text marks: <code>==bright==</code> for emphasis, <code>__text__</code> for underline, <code>`code`</code> for mono.</li>
+<li>Parts of a component are addressed with a slash: <code>#api/unit1</code>, <code>#api/procs</code>. The dot is kept for classes.</li>
+<li>Steps in a scene run in order. <code>with</code> runs a step at the same time as the previous one; <code>wait 0.5s</code> pauses. Exact timing is covered under Motion and timing.</li>
+<li>Elements persist into the next scene unless the scene starts with <code>clear</code>, so a story can build up and the camera can move through it.</li>
+</ul>
+</section>
+
+<section id="selectors">
+<h2>Selectors and the cascade</h2>
+<p>Selectors work everywhere an element is named: in <code>style</code> rules, in steps (<code>dim process:not(.hot)</code>), in connectors (<code>#web -&gt; #api/unit1</code>) and in the camera (<code>camera zoom .hot</code>).</p>
+<div class="tbl"><table>
+<thead><tr><th>Selector</th><th>Matches</th></tr></thead>
+<tbody>
+<tr><td>process</td><td>every element of that kind</td></tr>
+<tr><td>#api</td><td>the element with that id</td></tr>
+<tr><td>.hot</td><td>elements with that class</td></tr>
+<tr><td>#api/unit1</td><td>a named part inside a component</td></tr>
+<tr><td>#api process</td><td>processes anywhere inside #api</td></tr>
+<tr><td>row &gt; box</td><td>boxes that are direct children of a row</td></tr>
+<tr><td>[state=dim]</td><td>elements whose property has that value</td></tr>
+<tr><td>:first :last :nth(2) :not(…)</td><td>position and negation</td></tr>
+<tr><td>#a, #b</td><td>either</td></tr>
+</tbody></table></div>
+<h3>What the cascade does</h3>
+<p>Several rules can set the same property on the same element. The theme says processes fade in, a <code>style</code> rule says <code>.hot</code> processes are focused, and the element line itself may say <code>state=rest</code>. The cascade is the fixed order that decides which one wins, so the result never depends on luck.</p>
+<ol>
+<li>Theme defaults for the kind.</li>
+<li>Theme style rules.</li>
+<li>The script's <code>style</code> block. A more specific selector beats a less specific one (id over class over kind), and on a tie the later rule wins.</li>
+<li>Properties written on the element's own line.</li>
+<li>Steps during playback, such as <code>focus #p1</code>. These last until another step changes them or the scene ends, depending on the verb.</li>
+</ol>
+<p>A few properties inherit from the parent container unless set: font, text color and enter mode. There is no <code>!important</code>. <code>reel check --explain #p1</code> prints every property on an element and the rule that set it, so an agent can debug a style without guessing.</p>
+</section>
+
+<section id="elements">
+<h2>Elements</h2>
+<h3>Primitives</h3>
+<p>The 24 parts on the primitives sheet. Everything on screen reduces to these.</p>
+<div class="tbl"><table>
+<thead><tr><th>Group</th><th>Kinds</th><th>Common props</th></tr></thead>
+<tbody>
+<tr><td>shapes</td><td>box, card, circle, decision, store, stack</td><td>w, h, r, label, title (card), n (stack)</td></tr>
+<tr><td>lines</td><td>-- .. -&gt; -| ~&gt; &lt;-&gt;</td><td>label, from/to side, route</td></tr>
+<tr><td>text</td><td>title, p, code, label, metric</td><td>size, align, max width; marks inside text</td></tr>
+<tr><td>states</td><td>rest, focus, dim, active, select, trace</td><td>set with <code>state=</code> or as a step: <code>focus #x</code></td></tr>
+</tbody></table></div>
+<h3>Components</h3>
+<p>Defined in the theme pack as small <code>.reel</code> files made of primitives, so a pack can redraw a laptop without touching the engine.</p>
+<div class="tbl"><table>
+<thead><tr><th>Kind</th><th>Parts you can address</th></tr></thead>
+<tbody>
+<tr><td>laptop, phone</td><td>screen, body, label</td></tr>
+<tr><td>server</td><td>unit1…unitN, procs, label</td></tr>
+<tr><td>process</td><td>dot, name, note</td></tr>
+<tr><td>db</td><td>top, bands, label</td></tr>
+<tr><td>terminal</td><td>header, lines, cursor</td></tr>
+</tbody></table></div>
+<h3>Content blocks</h3>
+<div class="tbl"><table>
+<thead><tr><th>Kind</th><th>Input</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>code</td><td>file + line range, or inline</td><td>Syntax highlighted. <code>focus=</code> brightens lines, the rest dims.</td></tr>
+<tr><td>diff</td><td>a unified diff (straight from <code>git diff</code>) + hunk</td><td>Removed lines dim, added lines bright with a hairline gutter mark.</td></tr>
+<tr><td>terminal</td><td>lines starting with <code>$</code> are commands</td><td><code>type #t</code> types commands and reveals output.</td></tr>
+<tr><td>array</td><td><code>[1, 3, 4, 6]</code></td><td>Pointers: <code>ptr lo=1 hi=5</code>; <code>swap</code>, <code>mark</code> steps.</td></tr>
+<tr><td>mermaid</td><td>fenced <code>mermaid</code> block</td><td>Flowchart and sequence subset, drawn with our primitives. <code>walk C G H</code> lights edges in order.</td></tr>
+<tr><td>math</td><td>TeX: <code>math "T(n) = 2T(n/2) + O(n)"</code></td><td>Typeset by a TeX engine built into the binary, as vector shapes, so formulas take theme colours and can draw in or fade. Plain-TeX syntax today; LaTeX-only commands like <code>\mathrm</code> need work (milestone 4).</td></tr>
+<tr><td>chart</td><td>inline rows or a CSV path</td><td>line and bar first. Lines trace, fills follow.</td></tr>
+<tr><td>timeline</td><td>lanes with spans in ms</td><td>Playhead sweep is a step: <code>play #tl</code>.</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="layout">
+<h2>Layout</h2>
+<p>A small subset of CSS flexbox and grid, enough to place a handful of things well. No cascade, no selectors.</p>
+<ul>
+<li><code>row</code> and <code>col</code> are flex containers: <code>gap</code>, <code>align</code>, <code>justify</code>, <code>pad</code>, <code>wrap</code>.</li>
+<li><code>grid cols=3</code> with <code>gap</code>; children flow into cells, <code>span=2</code> to widen.</li>
+<li><code>layer</code> stacks children on top of each other; <code>place x= y=</code> is the escape hatch for absolute positions.</li>
+<li>Sizes: px, %, fr, auto. Text is measured with real font metrics, so <code>auto</code> fits labels exactly.</li>
+<li>Connectors are routed after layout. Aligned ends get a straight line; others get one or two right angles, never a diagonal.</li>
+<li>The root is the safe area of the frame, with title and caption bands reserved by the theme.</li>
+</ul>
+</section>
+
+<section id="motion">
+<h2>Motion and timing</h2>
+<h3>Entering and exiting</h3>
+<p>Drawing is one option, not the rule. Each element has an <code>enter</code> and an <code>exit</code> mode. The theme sets defaults per kind and the script can override either, through a <code>style</code> rule or on the element's line.</p>
+<div class="tbl"><table>
+<thead><tr><th>Mode</th><th>As enter</th><th>As exit</th><th>Hairline default for</th></tr></thead>
+<tbody>
+<tr><td>draw</td><td>Strokes trace in, then fills fade in</td><td>Fills fade, then strokes untrace</td><td>connectors, diagram shapes, chart lines</td></tr>
+<tr><td>fade</td><td>Opacity 0 → 1</td><td>Opacity 1 → 0</td><td>components, text</td></tr>
+<tr><td>rise</td><td>Fades in moving up</td><td>Fades out moving down</td><td>titles, captions</td></tr>
+<tr><td>type</td><td>Characters appear in order</td><td>Characters erase from the end</td><td>terminal commands</td></tr>
+<tr><td>none</td><td>Present at once</td><td>Gone at once</td><td>carried-over elements</td></tr>
+</tbody></table></div>
+<p>When exits happen:</p>
+<ul>
+<li><code>leave #x</code> as a step, at any point in a scene.</li>
+<li><code>clear</code> at the start of a scene exits everything left from the previous one; <code>clear keep=#api</code> keeps some.</li>
+<li>Elements that are still on screen when the video ends simply stay.</li>
+</ul>
+<p>Groups and components can <code>stagger=0.08s</code> their children, so a server's units enter one after another and leave in reverse.</p>
+<h3>Steps</h3>
+<ul>
+<li>State changes: <code>focus</code>, <code>dim</code>, <code>active</code>, <code>select</code>, <code>trace</code>, <code>rest</code>. Focusing one element can dim its siblings (theme setting).</li>
+<li>Travel: <code>send #a -&gt; #b</code> moves a packet dot along a connector.</li>
+<li>Camera: <code>camera zoom #x</code> fits the frame to an element's box; <code>camera pan</code>, <code>camera reset</code>.</li>
+<li>Exits: <code>leave #x</code> uses the element's exit mode; <code>leave #x exit=fade</code> overrides it once.</li>
+</ul>
+<h3>Timing</h3>
+<p>Timing is automatic by default and exact when you ask for it.</p>
+<div class="tbl"><table>
+<thead><tr><th>Write</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>scene fix 6s</td><td>The scene lasts exactly 6 seconds.</td></tr>
+<tr><td>draw #a for=1.5s</td><td>This step takes 1.5 seconds instead of the theme's duration.</td></tr>
+<tr><td>focus #b at=2s</td><td>Starts 2 seconds into the scene, whatever ran before it.</td></tr>
+<tr><td>focus #c at=+0.5s</td><td>Starts half a second after the previous step starts.</td></tr>
+<tr><td>with type #t</td><td>Starts together with the previous step.</td></tr>
+<tr><td>wait 1s</td><td>Holds before the next step.</td></tr>
+<tr><td>hold 2s</td><td>Holds at the end of the scene.</td></tr>
+<tr><td>ease=…</td><td>Overrides the theme's easing for one step.</td></tr>
+</tbody></table></div>
+<p>Without these, steps use the theme's durations and a scene lasts as long as its steps or its caption's reading time, whichever is longer. Explicit times always win. If they don't fit, for example steps running past a fixed scene length, <code>reel check</code> reports it with the line number rather than silently cutting the scene.</p>
+</section>
+
+<section id="themes">
+<h2>Theme packs</h2>
+<p>A theme is a folder. Copy one, change tokens or redraw components, and every script renders in the new look.</p>
+<pre>themes/hairline/
+  theme.toml          <span class="c"># tokens, fonts, motion, defaults</span>
+  components/
+    laptop.reel       <span class="c"># built from primitives</span>
+    server.reel
+    terminal.reel
+  fonts/              <span class="c"># optional, bundled</span></pre>
+<pre><span class="k">[color]</span>
+bg = <span class="s">"#08090A"</span>   ink = <span class="s">"#EDEDEF"</span>   hi = <span class="s">"#F4F5F7"</span>
+line0 = <span class="s">"#34373F"</span> line1 = <span class="s">"#6A6E7A"</span> line2 = <span class="s">"#D4D7DE"</span>
+
+<span class="k">[stroke]</span>
+width = 1.2   radius = 8
+
+<span class="k">[type]</span>
+sans = <span class="s">"Inter"</span>   mono = <span class="s">"JetBrains Mono"</span>   title = 54   caption = 20
+
+<span class="k">[motion]</span>
+draw = <span class="s">"0.6s ease-in-out"</span>   fade = <span class="s">"0.3s ease"</span>   camera = <span class="s">"0.6s cubic(.2,.7,.2,1)"</span>
+
+<span class="k">[enter]</span>
+connector = <span class="s">"draw"</span>   component = <span class="s">"fade"</span>   text = <span class="s">"fade"</span>   title = <span class="s">"rise"</span>
+
+<span class="k">[states]</span>
+focus = { stroke = <span class="s">"line2"</span>, fill = <span class="s">"hi/4%"</span> }   dim = { opacity = 0.35 }</pre>
+<p>A theme can start with <code>extends = "hairline"</code> and override only what changes. The engine never hardcodes a color or a duration; it only reads tokens.</p>
+</section>
+
+<section id="extend">
+<h2>Extending the language</h2>
+<p>Four levels, from cheapest to deepest. Most needs stop at the first two.</p>
+<ol>
+<li><strong>Styles.</strong> Classes and <code>style</code> rules change how existing things look and move, in the script or in a theme.</li>
+<li><strong>Components.</strong> Composition works like React: small pieces combine into bigger ones, and a bigger one is used exactly like a primitive. See <a href="#compose">Composition</a> below.</li>
+<li><strong>Themes.</strong> New tokens, redrawn components and new motion defaults, with <code>extends</code> to inherit the rest.</li>
+<li><strong>Engine plugins.</strong> Truly new behavior, such as a new content block (a flame graph, a Kubernetes topology) or a new verb, is written in Go against a small interface: parse its own props, lay itself out, draw to the display list. It registers a kind name and shows up in <code>reel ref</code>.</li>
+</ol>
+<p>Unknown kinds, properties or selectors that match nothing are errors from <code>reel check</code>, with the closest valid name suggested. That keeps the language open to extension without letting typos pass silently.</p>
+
+<h3 id="compose">Composition</h3>
+<p>A <code>define</code> block makes a new kind. The same idea as a React component, mapped onto this language:</p>
+<div class="tbl"><table>
+<thead><tr><th>React</th><th>Here</th></tr></thead>
+<tbody>
+<tr><td>props</td><td>parameters with defaults: <code>define queue items=3 label=""</code>, used as <code>{label}</code></td></tr>
+<tr><td>children</td><td><code>slot</code> marks where the caller's indented lines go; named slots with <code>slot side</code></td></tr>
+<tr><td>components inside components</td><td>a definition can use any other definition, primitive or built-in component</td></tr>
+<tr><td>conditionals and lists</td><td><code>if</code> and <code>repeat</code> inside a definition</td></tr>
+<tr><td>encapsulation</td><td>inner ids are scoped: <code>#q/slot</code> from outside, plain <code>#slot</code> inside</td></tr>
+<tr><td>imports</td><td><code>import "parts/queue.reel"</code>, or put it in a theme pack</td></tr>
+</tbody></table></div>
+<pre><span class="k">define</span> queue items=3 label=<span class="s">""</span> enter=fade stagger=0.08s
+  col gap=8
+    repeat items
+      box #slot w=120 h=32
+    label <span class="s">"{label}"</span>
+
+<span class="k">define</span> service name=<span class="s">"api"</span>
+  row gap=80 align=center
+    server #host <span class="s">"server · {name}"</span>
+      slot                       <span class="c"># caller's processes go here</span>
+    queue #jobs items=4 label=<span class="s">"jobs"</span>
+  #host -&gt; #jobs <span class="s">"enqueue"</span>
+
+<span class="c"># use it like any built-in</span>
+service #billing name=<span class="s">"billing"</span>
+  process <span class="s">"api"</span> .hot
+  process <span class="s">"worker"</span>
+focus #billing/jobs/slot:nth(2)</pre>
+<p>Steps compose the same way. A <code>sequence</code> is a named set of steps with parameters, so a common move is written once:</p>
+<pre><span class="k">sequence</span> request from to text=<span class="s">"GET"</span>
+  {from} -&gt; {to} <span class="s">"{text}"</span>
+  send {from} -&gt; {to}
+  focus {to}
+
+<span class="c"># in a scene</span>
+request #web #api text=<span class="s">"GET /v1/items"</span></pre>
+<p>A definition can carry its own enter, exit, stagger and style rules. Callers can still override them through the cascade, the same way they override built-ins.</p>
+</section>
+
+<section id="render">
+<h2>Renderer and speed</h2>
+<div class="rec"><p><strong>Decided after M0:</strong> Go for the whole pipeline, rasterizing with the pure-Go <code>tdewolff/canvas</code> library behind a small backend interface. Everything ships in one binary, the video encoder included.</p></div>
+<h3>M0 results</h3>
+<p>The four storyboard shots, 12 seconds at 1920×1080 and 30 fps (360 frames), on an Apple M5 with 10 cores. Both backends produced visually identical frames.</p>
+<div class="tbl"><table>
+<thead><tr><th>Backend</th><th>1 core, median</th><th>10 cores</th><th>+ encode (x264 veryfast)</th></tr></thead>
+<tbody>
+<tr><td>canvas, pure Go</td><td>2.4 ms/frame</td><td>~1,900 fps, 64× real time</td><td>1.0 s total, 12× real time</td></tr>
+<tr><td>resvg via cgo</td><td>7.1 ms/frame</td><td>194 fps, 6.5× real time</td><td>1.9 s total, 6× real time</td></tr>
+</tbody></table></div>
+<p>Building the display list costs about 0.02 ms per frame. With the pure-Go rasterizer, the encoder is now the slow part, so encoder choice matters more than drawing speed. These encode timings used ffmpeg only as a stand-in.</p>
+<ul>
+<li><strong>No headless browser.</strong> Screenshotting a browser per frame is what makes HTML-based video tools slow and heavy. We own layout and drawing instead.</li>
+<li><strong>Encoding, built in.</strong> No ffmpeg at run time. x264 is statically linked through cgo, and reel writes the MP4 container itself in Go. Defaults to a fast preset with x264's animation tuning, which suits flat frames, thin lines and text. The encoder sits behind an interface so other encoders can be added later.</li>
+<li><strong>Licence.</strong> GPL-2.0-or-later, to match x264.</li>
+<li><strong>Aspect ratios.</strong> 16:9 and 9:16 from the same script: <code>size 1080x1920</code>, with themes able to set different safe areas and type sizes per orientation.</li>
+<li><strong>Parallel and cached.</strong> Frames are independent, so they render across all cores. Holds and unchanged regions reuse earlier frames, which matters because explainers spend most of their time still.</li>
+<li><strong>Syntax highlighting.</strong> Chroma (Go) with a hairline style. Pierre's diff view is a JavaScript library, so it only fits a browser renderer; we match its look in the theme instead.</li>
+<li><strong>Mermaid.</strong> Mermaid itself needs JavaScript. We parse the flowchart and sequence subset ourselves and lay it out with a layered graph algorithm, which also lets the diagram use our primitives and animations.</li>
+</ul>
+<p>Target: stay well above real time at 1080p30 once layout, text shaping of code blocks and the built-in encoder are in. M0 leaves a lot of headroom for that.</p>
+</section>
+
+<section id="cli">
+<h2>CLI</h2>
+<div class="tbl"><table>
+<thead><tr><th>Command</th><th>Does</th></tr></thead>
+<tbody>
+<tr><td>reel render v.reel -o v.mp4</td><td>Full render. <code>--scene fix</code> renders one scene.</td></tr>
+<tr><td>reel check v.reel</td><td>Parse, resolve, lay out; report problems with line numbers. <code>--json</code> for agents.</td></tr>
+<tr><td>reel still v.reel --at 4.2s</td><td>One PNG frame, for fast visual checks.</td></tr>
+<tr><td>reel ref</td><td>Prints the element and verb reference, so an agent can read it instead of guessing.</td></tr>
+<tr><td>reel themes</td><td>Lists installed theme packs and their components.</td></tr>
+<tr><td>reel doctor</td><td>Checks fonts and theme files.</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="skill">
+<h2>Agent skill</h2>
+<p>A skill file that teaches the format and the workflow. For a code review the agent:</p>
+<ol>
+<li>Reads the PR diff and picks one story: the problem, the change, how data moves, the proof.</li>
+<li>Writes 4 to 7 scenes, each with one focus and one caption.</li>
+<li>Runs <code>reel check --json</code> and fixes what it reports.</li>
+<li>Runs <code>reel still</code> on a few moments if it can view images, then <code>reel render</code>.</li>
+</ol>
+<p>House rules in the skill: one emphasized phrase per caption, at most about six elements per scene, prefer components over raw shapes, and use the camera rather than cramming.</p>
+</section>
+
+<section id="milestones">
+<h2>Milestones</h2>
+<ol>
+<li><strong>M0 · benchmark. Done.</strong> Pure-Go rasterizer chosen; results under Renderer and speed.</li>
+<li><strong>M1 · stills.</strong> Parser, selectors and cascade, <code>check</code> with <code>--explain</code>, primitives, layout, components and <code>define</code>, <code>still</code> to PNG.</li>
+<li><strong>M2 · motion.</strong> Timeline, enter and exit modes, stagger, states, sequences, camera, built-in encoder writing MP4.</li>
+<li><strong>M3 · code.</strong> code, diff and terminal blocks with highlighting.</li>
+<li><strong>M4 · data.</strong> array, chart, timeline, mermaid subset, math.</li>
+<li><strong>M5 · packs and skill.</strong> Theme pack loading with <code>extends</code>, the agent skill, and a second theme to prove swapping works.</li>
+</ol>
+</section>
+
+<section id="open">
+<h2>Open questions</h2>
+<p>Settled: the CLI is <code>reel</code> with <code>.reel</code> files; voiceover comes later; 16:9 and 9:16 are both supported; reel is open source under GPL-2.0-or-later with x264 linked into the single binary. A hosted service can stay closed as long as it runs reel on its own servers and doesn't hand out the binary.</p>
+<ul>
+<li><strong>H.264 patent licensing</strong> for how reel and the hosted service are distributed. Worth a check with a lawyer before a commercial launch.</li>
+</ul>
+</section>
+</div>

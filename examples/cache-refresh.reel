@@ -1,0 +1,42 @@
+video "PR 482 · cache refresh"
+  theme hairline
+  size 1920x1080  fps 30
+
+style
+  process          enter=fade
+  .hot             state=focus
+  #api process.idle  state=dim
+
+sequence request from to text="GET"
+  {from} -> {to} "{text}"
+  send {from}
+  focus {to}
+
+scene establish 3s
+  row gap=240 align=center
+    laptop #web "laptop · web"   enter=none
+    server #api "server · api-1"
+  say "A client and ==one server=="
+
+scene request
+  request #web #api/unit1 text="GET /v1/items"
+  say "The request travels to the server"
+
+scene inside
+  camera zoom #api for=0.8s
+  #api/procs
+    process #p1 .hot  "api"    note="2 in flight"
+    process #p2       "cache"  note="running"
+    process #p3 .idle "worker" note="idle"
+  say "Zoom in: ==one process holds both requests=="
+
+scene proof
+  camera reset
+  terminal #t
+    $ curl -i api.internal/v1/items
+    HTTP/1.1 200 OK
+    x-load: ==shared==
+  #api ..> #t "stdout"
+  type #t
+  with dim process:not(.hot)
+  say "Both callers got one shared load"

@@ -1,0 +1,5 @@
+/bin/
+/out/
+/resvgshim/target/
+*.mp4
+.DS_Store
