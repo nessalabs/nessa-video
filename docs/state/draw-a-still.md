@@ -8,7 +8,7 @@ parent: reel
 sources:
   - internal/app/still.go
   - internal/layout/layout.go
-  - internal/motion/end.go
+  - internal/motion/moment.go
   - internal/stage/stage.go
   - internal/render/canvas/canvas.go
   - cmd/reel/main.go
@@ -72,10 +72,10 @@ wrap yet.
 
 ## Running the steps
 
-The steps run in order to find the end state. `focus`, `dim`, `active`,
-`select`, `trace` and `rest` change an element's state. `leave` removes it.
-`camera zoom` frames its target, and `camera reset` returns to the full stage.
-The last `say` becomes the caption. Timing is ignored until animation exists.
+A still is the scene's [plan](play-a-scene.md) at the moment after its last
+step, before anything leaves to make room for the next scene. States,
+removals, the camera and the caption are exactly what the video shows at
+that moment.
 
 ## Painting
 

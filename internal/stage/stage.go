@@ -81,55 +81,93 @@ func (s *Stage) Options() layout.Options {
 	}
 }
 
-// Paint returns the display list for a scene's final state.
-func (s *Stage) Paint(sc *c.Scene) *render.List {
+// Area returns the design-space rectangle scenes are laid out in.
+func (s *Stage) Area() layout.Rect {
+	dw, dh, _ := s.Design()
+	return layout.Rect{X: 64, Y: 64, W: dw - 128, H: dh - 64 - 128}
+}
+
+// Layout places a scene's elements. Positions do not change while a scene
+// plays, so callers lay out once and paint many moments.
+func (s *Stage) Layout(sc *c.Scene) layout.Result {
+	return layout.Scene(sc.Root, s.Area(), s.Measure, s.Options())
+}
+
+// view returns the camera transform that frames target (nil for the stage).
+func (s *Stage) view(lay layout.Result, target *c.Element) (z, cx, cy float64) {
+	area := s.Area()
+	z, cx, cy = 1, area.CX(), area.CY()
+	if target == nil {
+		return
+	}
+	r, ok := lay.Boxes[target]
+	if !ok || r.W == 0 {
+		return
+	}
+	z = math.Max(1, math.Min(math.Min(area.W/(r.W+96), area.H/(r.H+96)), 2.5))
+	return z, r.CX(), r.CY()
+}
+
+// Frame returns the display list for one moment of a scene.
+func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.List {
 	dw, dh, scale := s.Design()
 	l := &render.List{W: s.W, H: s.H, BG: s.col("bg")}
 	opt := s.Options()
-
-	area := layout.Rect{X: 64, Y: 64, W: dw - 128, H: dh - 64 - 128}
-	lay := layout.Scene(sc.Root, area, s.Measure, opt)
-	end := motion.EndOf(sc)
+	area := s.Area()
 
 	base := render.Affine{scale, 0, 0, scale, 0, 0}
-	view := base
-	if end.Camera != nil {
-		if r, ok := lay.Boxes[end.Camera]; ok && r.W > 0 {
-			z := math.Min(math.Min(area.W/(r.W+96), area.H/(r.H+96)), 2.5)
-			z = math.Max(z, 1)
-			view = base.Mul(render.Translate(area.CX(), area.CY())).
-				Mul(render.Affine{z, 0, 0, z, 0, 0}).
-				Mul(render.Translate(-r.CX(), -r.CY()))
-		}
-	}
+	from, to, mix := m.Camera()
+	z0, x0, y0 := s.view(lay, from)
+	z1, x1, y1 := s.view(lay, to)
+	lerp := func(a, b float64) float64 { return a + (b-a)*mix }
+	z, cx, cy := lerp(z0, z1), lerp(x0, x1), lerp(y0, y1)
+	view := base.Mul(render.Translate(area.CX(), area.CY())).
+		Mul(render.Affine{z, 0, 0, z, 0, 0}).
+		Mul(render.Translate(-cx, -cy))
 
-	p := &painter{s: s, l: l, m: view, lay: lay, end: end, opt: opt}
-	p.element(sc.Root, "rest")
+	p := &painter{s: s, l: l, view: view, m: view, lay: lay, mo: m, opt: opt}
+	p.element(sc.Root, "rest", 1, 0)
 	sc.Root.Walk(func(e *c.Element) {
-		if e.Edge != nil && !end.Gone[e] {
+		if e.Edge != nil {
 			p.edge(sc, e)
 		}
 	})
+	for _, pk := range m.Packets() {
+		p.packet(sc, pk)
+	}
 
-	if end.Caption != "" {
+	if text, op := m.Caption(); text != "" && op > 0 {
 		t := opt.Type["caption"]
 		p.m = base
-		p.runs(end.Caption, dw/2, dh-72, t, s.col("ink-2"), s.col("hi"), render.Middle)
+		p.opacity = op
+		p.runs(text, dw/2, dh-72, t, s.col("ink-2"), s.col("hi"), render.Middle)
 	}
 	return l
 }
 
+// Still paints a scene as it looks once all of its steps have run.
+func (s *Stage) Still(sp *motion.ScenePlan) *render.List {
+	return s.Frame(sp.Scene, s.Layout(sp.Scene), sp.End())
+}
+
 type painter struct {
-	s   *Stage
-	l   *render.List
-	m   render.Affine
-	lay layout.Result
-	end motion.End
-	opt layout.Options
+	s       *Stage
+	l       *render.List
+	view    render.Affine // camera transform
+	m       render.Affine // camera plus the current element's rise
+	lay     layout.Result
+	mo      motion.Moment
+	opt     layout.Options
+	opacity float64 // multiplies every colour drawn
+	draw    float64 // stroke progress for the element being drawn
 }
 
 func (p *painter) stroke(d string, cl color.NRGBA, dash bool) {
-	op := render.Op{Kind: render.PathOp, M: p.m, D: d, Stroke: cl, StrokeW: p.s.num("stroke", 1.2), Draw: 1}
+	cl = alpha(cl, p.opacity)
+	if cl.A == 0 || p.draw <= 0 {
+		return
+	}
+	op := render.Op{Kind: render.PathOp, M: p.m, D: d, Stroke: cl, StrokeW: p.s.num("stroke", 1.2), Draw: p.draw}
 	if dash {
 		op.Dash = []float64{4, 4}
 	}
@@ -137,10 +175,18 @@ func (p *painter) stroke(d string, cl color.NRGBA, dash bool) {
 }
 
 func (p *painter) fill(d string, cl color.NRGBA) {
+	cl = alpha(cl, p.opacity)
+	if cl.A == 0 {
+		return
+	}
 	p.l.Ops = append(p.l.Ops, render.Op{Kind: render.PathOp, M: p.m, D: d, Fill: cl, Draw: 1})
 }
 
 func (p *painter) text(s string, x, y float64, t layout.Type, cl color.NRGBA, an render.Anchor) {
+	cl = alpha(cl, p.opacity)
+	if cl.A == 0 || s == "" {
+		return
+	}
 	p.l.Ops = append(p.l.Ops, render.Op{Kind: render.TextOp, M: p.m, Text: s, X: x, Y: y, Font: t.Font, Size: t.Size, Anchor: an, Color: cl})
 }
 
@@ -167,7 +213,10 @@ func (p *painter) runs(s string, x, y float64, t layout.Type, base, hi color.NRG
 		p.text(part, x, y, t, cl, render.Start)
 		w := p.s.Measure.Measure(part, t.Font, t.Size)
 		if under {
+			d := p.draw
+			p.draw = 1
 			p.stroke(fmt.Sprintf("M%g %gH%g", x, y+4, x+w), hi, false)
+			p.draw = d
 		}
 		x += w
 	}
@@ -213,41 +262,73 @@ func (p *painter) look(state string) look {
 	return look{line: s.col("line-1"), text: s.col("ink")}
 }
 
+func lerpColor(a, b color.NRGBA, t float64) color.NRGBA {
+	f := func(x, y uint8) uint8 { return uint8(math.Round(float64(x) + (float64(y)-float64(x))*t)) }
+	return color.NRGBA{f(a.R, b.R), f(a.G, b.G), f(a.B, b.B), f(a.A, b.A)}
+}
+
+func (p *painter) blend(from, to string, mix float64) look {
+	a, b := p.look(from), p.look(to)
+	if mix >= 1 {
+		return b
+	}
+	out := look{line: lerpColor(a.line, b.line, mix), text: lerpColor(a.text, b.text, mix), fill: lerpColor(a.fill, b.fill, mix)}
+	if mix >= .5 {
+		out.dash, out.brackets, out.dot = b.dash, b.brackets, b.dot
+	} else {
+		out.dash, out.brackets, out.dot = a.dash, a.brackets, a.dot
+	}
+	return out
+}
+
 // element paints e and its children. inherited carries dim and focus down
-// so a dimmed component dims its parts.
-func (p *painter) element(e *c.Element, inherited string) {
-	if p.end.Gone[e] {
+// so a dimmed component dims its parts; opacity and rise multiply and add
+// down the tree, so a component fading in fades its parts too.
+func (p *painter) element(e *c.Element, inherited string, opacity, rise float64) {
+	ap := p.mo.Look(e)
+	opacity *= ap.Opacity
+	if opacity <= 0.002 {
 		return
 	}
-	state := p.end.StateOf(e)
-	if state == "rest" && (inherited == "dim" || inherited == "focus") {
-		state = inherited
+	rise += ap.Rise
+	eff := func(s string) string {
+		if s == "rest" && (inherited == "dim" || inherited == "focus") {
+			return inherited
+		}
+		return s
 	}
-	lk := p.look(state)
+	lk := p.blend(eff(ap.From), eff(ap.State), ap.Mix)
+	state := eff(ap.State)
 	r, placed := p.lay.Boxes[e]
 	kind := e.Kind()
+
+	p.m = p.view.Mul(render.Translate(0, -rise))
+	p.opacity = opacity
+	p.draw = ap.Draw
 
 	textColor := lk.text
 	if v, ok := e.Computed["color"]; ok && state == "rest" {
 		textColor = p.s.col(v.Value)
 	}
 
-	if placed {
+	if placed && e.Edge == nil {
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
-			p.shape(e, r, lk)
-		case "title":
-			t := layout.TypeOf(e, p.opt)
-			for i, ln := range p.lay.Lines[e] {
-				p.runs(ln, r.X, r.Y+t.Size*(1.0+1.35*float64(i)), t, p.s.col("title-ink"), p.s.col("hi"), render.Start)
+			p.shape(e, r, lk, ap)
+		case "title", "p", "label", "metric", "code":
+			base, hi := textColor, p.s.col("hi")
+			if kind == "title" {
+				base = p.s.col("title-ink")
 			}
-		case "p", "label", "metric", "code":
 			t := layout.TypeOf(e, p.opt)
-			for i, ln := range p.lay.Lines[e] {
-				p.runs(ln, r.X, r.Y+t.Size*(1.0+1.35*float64(i)), t, textColor, p.s.col("hi"), render.Start)
+			p.draw = 1
+			p.opacity = opacity * ap.FillIn
+			lines := reveal(p.lay.Lines[e], ap.Reveal)
+			for i, ln := range lines {
+				p.runs(ln, r.X, r.Y+t.Size*(1.0+1.35*float64(i)), t, base, hi, render.Start)
 			}
 		case "terminal":
-			p.terminal(e, r, lk)
+			p.terminal(e, r, lk, ap)
 		case "diff", "array", "chart", "timeline", "mermaid", "math":
 			p.stroke(rr(r, 10), p.s.col("line-0"), true)
 			t := p.opt.Type["label"]
@@ -256,6 +337,7 @@ func (p *painter) element(e *c.Element, inherited string) {
 		if !c.IsBuiltinKind(kind) && kind != "scene" && (state == "focus" || state == "select" || state == "trace") {
 			// a component instance with a state draws a frame around itself
 			fr := layout.Rect{X: r.X - 12, Y: r.Y - 10, W: r.W + 24, H: r.H + 20}
+			p.draw = 1
 			if lk.fill.A > 0 {
 				p.fill(rr(fr, 8), lk.fill)
 			}
@@ -267,11 +349,58 @@ func (p *painter) element(e *c.Element, inherited string) {
 		pass = state
 	}
 	for _, ch := range e.Children {
-		p.element(ch, pass)
+		if ch.Edge == nil {
+			p.element(ch, pass, opacity, rise)
+		}
 	}
 }
 
-func (p *painter) shape(e *c.Element, r layout.Rect, lk look) {
+// reveal returns the lines with only the first share of visible characters
+// shown. Inline marks (== and __) take no time and are never cut in half,
+// and a mark left open is closed so the shown part keeps its emphasis.
+func reveal(lines []string, share float64) []string {
+	if share >= 1 {
+		return lines
+	}
+	total := 0
+	for _, l := range lines {
+		total += len([]rune(layout.Plain(l)))
+	}
+	left := int(math.Round(share * float64(total)))
+	var out []string
+	for _, l := range lines {
+		if left <= 0 {
+			break
+		}
+		var b strings.Builder
+		open := map[string]bool{}
+		r := []rune(l)
+		for i := 0; i < len(r); i++ {
+			if i+1 < len(r) && (r[i] == '=' && r[i+1] == '=' || r[i] == '_' && r[i+1] == '_') {
+				m := string(r[i : i+2])
+				open[m] = !open[m]
+				b.WriteString(m)
+				i++
+				continue
+			}
+			if left <= 0 {
+				break
+			}
+			b.WriteRune(r[i])
+			left--
+		}
+		for _, m := range []string{"__", "=="} {
+			if open[m] {
+				b.WriteString(m)
+			}
+		}
+		out = append(out, b.String())
+	}
+	return out
+}
+
+func (p *painter) shape(e *c.Element, r layout.Rect, lk look, ap motion.Appearance) {
+	opacity := p.opacity
 	kind := e.Kind()
 	radius := 6.0
 	if v, ok := e.Computed["r"]; ok && kind != "circle" {
@@ -284,6 +413,7 @@ func (p *painter) shape(e *c.Element, r layout.Rect, lk look) {
 	case "circle":
 		d = circle(r.CX(), r.CY(), r.W/2)
 		if r.W <= 10 { // a small dot reads as a status light
+			p.opacity = opacity * ap.FillIn
 			p.fill(d, lk.line)
 			if lk.text == p.s.col("hi") {
 				p.fill(d, p.s.col("hi"))
@@ -309,9 +439,13 @@ func (p *painter) shape(e *c.Element, r layout.Rect, lk look) {
 		d = rr(r, radius)
 	}
 	if lk.fill.A > 0 {
+		p.opacity = opacity * ap.FillIn
 		p.fill(d, lk.fill)
+		p.opacity = opacity
 	}
 	p.stroke(d, lk.line, lk.dash)
+	p.opacity = opacity * ap.FillIn
+	p.draw = 1
 	if lk.brackets {
 		p.stroke(fmt.Sprintf("M%g %gv-8h8M%g %gh8v8M%g %gv8h-8M%g %gh-8v-8",
 			r.X-6, r.Y+2, r.Right()-2, r.Y-6, r.Right()+6, r.Bottom()-2, r.X+2, r.Bottom()+6), p.s.col("line-2"), false)
@@ -329,7 +463,8 @@ func (p *painter) shape(e *c.Element, r layout.Rect, lk look) {
 	}
 }
 
-func (p *painter) terminal(e *c.Element, r layout.Rect, lk look) {
+func (p *painter) terminal(e *c.Element, r layout.Rect, lk look, ap motion.Appearance) {
+	p.draw = 1
 	p.fill(rr(r, 12), p.s.col("panel"))
 	p.stroke(rr(r, 12), lk.line, lk.dash)
 	p.stroke(fmt.Sprintf("M%g %gH%g", r.X, r.Y+44, r.Right()), p.s.col("line-0"), false)
@@ -337,7 +472,8 @@ func (p *painter) terminal(e *c.Element, r layout.Rect, lk look) {
 	lab := p.opt.Type["label"]
 	p.text("terminal", r.Right()-20, r.Y+27, lab, p.s.col("ink-3"), render.End)
 	t := p.opt.Type["code"]
-	for i, ln := range e.Body {
+	body := reveal(e.Body, ap.Reveal)
+	for i, ln := range body {
 		y := r.Y + 44 + 30 + 30*float64(i)
 		x := r.X + 24
 		if strings.HasPrefix(ln, "$ ") || ln == "$" {
@@ -351,50 +487,42 @@ func (p *painter) terminal(e *c.Element, r layout.Rect, lk look) {
 	}
 }
 
-// edge routes a connector with straight or right-angled segments only.
-func (p *painter) edge(sc *c.Scene, e *c.Element) {
+// route returns a connector's points: straight when its ends line up,
+// otherwise out sideways, across and in. Nil if an end is missing.
+func (p *painter) route(sc *c.Scene, e *c.Element) [][2]float64 {
 	scope := sc.Root
 	if o := e.OwnerElement(); o != nil {
 		scope = o
 	}
 	if e.Edge.From == nil || e.Edge.To == nil {
-		return
+		return nil
 	}
 	fromEls, toEls := c.Select(scope, e.Edge.From), c.Select(scope, e.Edge.To)
 	if len(fromEls) == 0 || len(toEls) == 0 {
-		return
+		return nil
 	}
 	a, okA := p.lay.Boxes[fromEls[0]]
 	b, okB := p.lay.Boxes[toEls[0]]
-	if !okA || !okB || p.end.Gone[fromEls[0]] || p.end.Gone[toEls[0]] {
-		return
+	if !okA || !okB {
+		return nil
 	}
-	state := p.end.StateOf(e)
-	lk := p.look(state)
-	cl := lk.line
-	dashed := e.Edge.Op == "..>" || e.Edge.Op == ".." || lk.dash
-	head := e.Edge.Op != "--" && e.Edge.Op != ".."
 	const gap = 8.0
-
-	var pts [][2]float64
 	top, bot := math.Max(a.Y, b.Y), math.Min(a.Bottom(), b.Bottom())
 	left, right := math.Max(a.X, b.X), math.Min(a.Right(), b.Right())
 	switch {
-	case top < bot: // rows overlap: one horizontal line
+	case top < bot:
 		y := (top + bot) / 2
 		if a.CX() < b.CX() {
-			pts = [][2]float64{{a.Right() + gap, y}, {b.X - gap, y}}
-		} else {
-			pts = [][2]float64{{a.X - gap, y}, {b.Right() + gap, y}}
+			return [][2]float64{{a.Right() + gap, y}, {b.X - gap, y}}
 		}
-	case left < right: // columns overlap: one vertical line
+		return [][2]float64{{a.X - gap, y}, {b.Right() + gap, y}}
+	case left < right:
 		x := (left + right) / 2
 		if a.CY() < b.CY() {
-			pts = [][2]float64{{x, a.Bottom() + gap}, {x, b.Y - gap}}
-		} else {
-			pts = [][2]float64{{x, a.Y - gap}, {x, b.Bottom() + gap}}
+			return [][2]float64{{x, a.Bottom() + gap}, {x, b.Y - gap}}
 		}
-	default: // elbow: out sideways, across, in sideways
+		return [][2]float64{{x, a.Y - gap}, {x, b.Bottom() + gap}}
+	default:
 		var x1, x2 float64
 		if a.CX() < b.CX() {
 			x1, x2 = a.Right()+gap, b.X-gap
@@ -402,8 +530,28 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 			x1, x2 = a.X-gap, b.Right()+gap
 		}
 		mx := (x1 + x2) / 2
-		pts = [][2]float64{{x1, a.CY()}, {mx, a.CY()}, {mx, b.CY()}, {x2, b.CY()}}
+		return [][2]float64{{x1, a.CY()}, {mx, a.CY()}, {mx, b.CY()}, {x2, b.CY()}}
 	}
+}
+
+// edge draws a connector.
+func (p *painter) edge(sc *c.Scene, e *c.Element) {
+	pts := p.route(sc, e)
+	if pts == nil {
+		return
+	}
+	ap := p.mo.Look(e)
+	if ap.Opacity <= 0.002 {
+		return
+	}
+	lk := p.blend(ap.From, ap.State, ap.Mix)
+	cl := lk.line
+	dashed := e.Edge.Op == "..>" || e.Edge.Op == ".." || lk.dash
+	head := e.Edge.Op != "--" && e.Edge.Op != ".."
+	p.m = p.view
+	p.opacity = ap.Opacity
+	p.draw = ap.Draw
+
 	var d strings.Builder
 	for i, pt := range pts {
 		if i == 0 {
@@ -413,14 +561,15 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 		}
 	}
 	p.stroke(d.String(), cl, dashed)
-	if head {
+	p.draw = 1
+	if head && ap.Draw >= 0.98 {
 		p.chevron(pts[len(pts)-2], pts[len(pts)-1], cl)
 		if e.Edge.Op == "<->" {
 			p.chevron(pts[1], pts[0], cl)
 		}
 	}
 	if e.Text != "" {
-		// label above the longest segment
+		p.opacity = ap.Opacity * ap.FillIn
 		// label the longest horizontal segment, or the longest one if none is horizontal
 		best, bl := 0, -1.0
 		for pass := 0; pass < 2 && bl < 0; pass++ {
@@ -441,6 +590,35 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 		} else {
 			p.runs(e.Text, mx+10, my+4, t, p.s.col("ink"), p.s.col("hi"), render.Start)
 		}
+	}
+}
+
+// packet draws a dot part of the way along a connector.
+func (p *painter) packet(sc *c.Scene, pk motion.Packet) {
+	pts := p.route(sc, pk.Edge)
+	if pts == nil {
+		return
+	}
+	var total float64
+	for i := 0; i+1 < len(pts); i++ {
+		total += math.Hypot(pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1])
+	}
+	want := total * pk.Progress
+	for i := 0; i+1 < len(pts); i++ {
+		seg := math.Hypot(pts[i+1][0]-pts[i][0], pts[i+1][1]-pts[i][1])
+		if want <= seg || i+2 == len(pts) {
+			f := 0.0
+			if seg > 0 {
+				f = math.Min(1, want/seg)
+			}
+			x := pts[i][0] + (pts[i+1][0]-pts[i][0])*f
+			y := pts[i][1] + (pts[i+1][1]-pts[i][1])*f
+			p.m = p.view
+			p.opacity = math.Min(1, math.Min(pk.Progress, 1-pk.Progress)*8)
+			p.fill(circle(x, y, 4), p.s.col("hi"))
+			return
+		}
+		want -= seg
 	}
 }
 

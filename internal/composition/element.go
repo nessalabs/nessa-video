@@ -31,6 +31,19 @@ type Element struct {
 
 	// Computed holds cascaded property values after Cascade runs.
 	Computed map[string]Value
+
+	// Carried is true for elements copied from the previous scene.
+	Carried bool
+	source  *Element // the element this one was copied from, if any
+}
+
+// Identity returns the original element this one descends from by copying
+// across scenes. Copies of the same element share an identity.
+func (e *Element) Identity() *Element {
+	if e.source != nil {
+		return e.source
+	}
+	return e
 }
 
 // Edge describes a connector between two sets of elements.
@@ -77,6 +90,8 @@ func (e *Element) Clone() *Element {
 		y.Inline = append([]Decl(nil), x.Inline...)
 		y.Children = nil
 		y.Computed = nil
+		y.Carried = true
+		y.source = x.Identity()
 		m[x] = &y
 		for _, c := range x.Children {
 			cc := cp(c)

@@ -5,6 +5,7 @@ import (
 	"image"
 
 	"github.com/nessalabs/nessa-video/internal/layout"
+	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/stage"
 	"github.com/nessalabs/nessa-video/internal/theme"
@@ -34,13 +35,15 @@ func (s Stills) Render(src, only string) ([]Still, CheckReport, error) {
 	v := rep.video
 	th, _ := theme.Get(v.Theme)
 	st := &stage.Stage{Theme: th, Measure: s.Measure, W: v.Width, H: v.Height}
+	plan := motion.New(v, motion.TimingsFrom(th.Tokens))
 	var out []Still
-	for i, sc := range v.Scenes {
+	for i, sp := range plan.Scenes {
+		sc := sp.Scene
 		if only != "" && sc.Name != only {
 			continue
 		}
 		img := image.NewRGBA(image.Rect(0, 0, v.Width, v.Height))
-		if err := s.Raster.Rasterize(st.Paint(sc), img); err != nil {
+		if err := s.Raster.Rasterize(st.Still(sp), img); err != nil {
 			return nil, rep, err
 		}
 		out = append(out, Still{Index: i + 1, Scene: sc.Name, Image: img})

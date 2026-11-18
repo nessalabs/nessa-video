@@ -7,6 +7,7 @@ reel includes or links the following software and fonts.
 | Inter (Latin subset, weights 400, 500, 600) | Embedded font for the hairline theme | SIL Open Font License 1.1 |
 | JetBrains Mono (Latin subset, weight 400) | Embedded font for the hairline theme | SIL Open Font License 1.1 |
 | github.com/tdewolff/canvas | Vector drawing, text and rasterizing | MIT |
+| x264 | H.264 encoder, linked into the binary | GPL-2.0-or-later |
 | resvg (benchmark only, not in the reel binary) | Comparison rasterizer in `cmd/bench` | Apache-2.0 or MIT |
 
 The font files in `assets/fonts` are the Latin subsets published by

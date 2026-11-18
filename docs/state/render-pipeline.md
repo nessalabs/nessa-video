@@ -2,10 +2,15 @@
 id: render-pipeline
 title: Render frames
 kind: flow
-status: mixed
-summary: A display list per frame goes to a rasterizer and then to an encoder. Stills from scripts and the benchmark work; the built-in encoder does not yet.
+status: implemented
+summary: Frames are drawn in parallel from the plan, converted to YUV, and encoded in order with the built-in x264 into a fast-start MP4.
 parent: reel
 sources:
+  - internal/app/render.go
+  - internal/encode/encode.go
+  - internal/encode/mp4/mp4.go
+  - internal/encode/x264/x264.go
+  - Makefile
   - internal/render/frame.go
   - internal/render/canvas/canvas.go
   - internal/render/resvg/resvg.go
@@ -21,10 +26,11 @@ with colours and transforms. A rasterizer turns it into pixels and an encoder
 turns the pixels into video. Frames do not depend on each other, so they are
 drawn in parallel and written in order.
 
-Status: rasterizing is implemented and benchmarked. [Drawing a still](draw-a-still.md)
-builds display lists from scripts; the benchmark in `cmd/bench` uses a
-hand-built storyboard. Encoding in the benchmark goes through ffmpeg only to
-measure it; the shipped binary will link x264 instead.
+`reel render` asks the [plan](play-a-scene.md) which scene is playing at each
+frame time, paints that moment, rasterizes it and converts it to YUV on all
+cores. An ordered writer hands frames to x264 one at a time, and the MP4 is
+written with its index first so it can start playing before it has fully
+downloaded. Frames held in memory are bounded to a few per core.
 
 ```mermaid
 sequenceDiagram
@@ -32,13 +38,28 @@ sequenceDiagram
     participant Workers as Frame workers
     participant Raster as Rasterizer
     participant Writer as Ordered writer
-    participant Enc as Encoder
+    participant Enc as x264 and MP4 writer
     Plan->>Workers: Frame times
-    Workers->>Raster: Display list
-    Raster-->>Workers: Pixels
+    Workers->>Raster: Display list for the moment
+    Raster-->>Workers: RGBA pixels
+    Workers->>Workers: Convert to YUV 4:2:0
     Workers->>Writer: Frame n, any order
     Writer->>Enc: Frames in order
+    Enc-->>Writer: Compressed frames
+    Writer->>Writer: Write MP4 on close
 ```
+
+## The output file
+
+H.264 High profile, 4:2:0, BT.709 colour, constant-quality mode (`--crf 18`
+by default) with x264's `veryfast` preset and its animation tuning. There are
+no B-frames, so every frame is stored in display order. A keyframe appears at
+least every four seconds. The example script renders 17.4 seconds of 1080p
+in about 1.5 seconds on an Apple M5.
+
+`make build` links x264 statically. The resulting binary is about 10 MB and
+needs only the operating system's own libraries. A build without cgo still
+checks scripts and draws stills.
 
 ## Benchmark results
 
@@ -51,7 +72,7 @@ Four shots, 12 seconds at 1920×1080 and 30 fps, on an Apple M5 with 10 cores.
 
 Both produced the same frames. The pure-Go rasterizer is the one reel uses.
 With it, encoding takes most of the time, so the encoder matters more than
-drawing speed. Run `go run -tags resvg ./cmd/bench`; the resvg adapter needs
+drawing speed. The benchmark itself still pipes to ffmpeg to compare encoders. Run `go run -tags resvg ./cmd/bench`; the resvg adapter needs
 its Rust library built from `resvgshim`.
 
 ## Known gaps
