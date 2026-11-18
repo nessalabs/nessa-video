@@ -48,7 +48,13 @@ type Step struct {
 	// Speech is the narration length in seconds for a say step, filled in
 	// once the voice has spoken it; 0 means it is estimated from the words.
 	Speech float64
+	// Words times each word of the caption as it is spoken, by caption word
+	// index; nil when the spoken words differ from the caption.
+	Words []WordTime
 }
+
+// WordTime is when one caption word is spoken, in seconds from the line's start.
+type WordTime struct{ Start, End float64 }
 
 // Spoken returns what a say step reads aloud: its speak= text, or its caption.
 func (s Step) Spoken() string {

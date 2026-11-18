@@ -71,7 +71,7 @@ Steps run one after another after the scene's elements have entered.
 | --- | --- |
 | `focus`, `dim`, `active`, `select`, `trace`, `rest` `SELECTOR` | change state |
 | `leave SELECTOR` | play its exit |
-| `say "caption"` | caption at the bottom; spoken when the video has a voice; `speak="…"` speaks other words |
+| `say "caption"` | caption at the bottom; spoken when the video has a voice, highlighting each word as it is said; `say speak="…"` shows and speaks the same words; `say "short" speak="longer"` speaks more than it shows |
 | `camera zoom SELECTOR`, `camera reset` | move the view |
 | `send SELECTOR` | dot along the connector starting there |
 | `type SELECTOR` | type out a terminal, code or text block |

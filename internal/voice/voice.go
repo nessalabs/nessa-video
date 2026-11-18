@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,18 +25,49 @@ type Speech []int16
 // Seconds returns the length of the speech.
 func (s Speech) Seconds() float64 { return float64(len(s)) / Rate }
 
-// Voice speaks text.
+// Word is one spoken word and when it is said, in seconds from the start.
+type Word struct {
+	Text  string  `json:"text"`
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
+// Spoken is speech plus the timing of each word, when the engine knows it.
+type Spoken struct {
+	Audio Speech
+	Words []Word
+}
+
+// Voice speaks text. Adapters return word timings when their engine reports
+// them and leave Words nil otherwise; the core fills the gap with
+// EstimateWords, so every voice gets captions that follow it.
 type Voice interface {
 	// Key identifies the voice for caching: engine, voice and model.
 	Key() string
-	Speak(ctx context.Context, text string) (Speech, error)
+	Speak(ctx context.Context, text string) (Spoken, error)
 }
 
-// Spec is the voice a script asks for: `voice ENGINE ID model=…`.
-type Spec struct {
-	Engine string
-	ID     string
-	Model  string
+// EstimateWords spreads words over a length of speech, weighting each by
+// its number of letters. The core uses it for voices that do not report
+// word timings, so captions can follow any voice.
+func EstimateWords(text string, seconds float64) []Word {
+	fields := strings.Fields(text)
+	if len(fields) == 0 || seconds <= 0 {
+		return nil
+	}
+	weight := func(w string) float64 { return float64(len([]rune(w))) + 2 } // a little time per word for the gap
+	total := 0.0
+	for _, w := range fields {
+		total += weight(w)
+	}
+	out := make([]Word, len(fields))
+	t := 0.0
+	for i, w := range fields {
+		d := seconds * weight(w) / total
+		out[i] = Word{Text: w, Start: t, End: t + d*0.85}
+		t += d
+	}
+	return out
 }
 
 // Cached wraps a voice with an on-disk cache keyed by voice and text.
@@ -44,29 +76,36 @@ type Cached struct {
 	Dir   string
 }
 
-// Speak returns cached speech or asks the wrapped voice.
-func (c Cached) Speak(ctx context.Context, text string) (Speech, error) {
+// Speak returns cached speech or asks the wrapped voice. Audio is stored as
+// raw PCM and word timings next to it as JSON.
+func (c Cached) Speak(ctx context.Context, text string) (Spoken, error) {
 	sum := sha256.Sum256([]byte(c.Voice.Key() + "\x00" + text))
-	path := filepath.Join(c.Dir, hex.EncodeToString(sum[:16])+".pcm")
-	if b, err := os.ReadFile(path); err == nil && len(b)%2 == 0 {
-		s := make(Speech, len(b)/2)
-		for i := range s {
-			s[i] = int16(binary.LittleEndian.Uint16(b[2*i:]))
+	base := filepath.Join(c.Dir, hex.EncodeToString(sum[:16]))
+	if b, err := os.ReadFile(base + ".pcm"); err == nil && len(b)%2 == 0 {
+		s := Spoken{Audio: make(Speech, len(b)/2)}
+		for i := range s.Audio {
+			s.Audio[i] = int16(binary.LittleEndian.Uint16(b[2*i:]))
+		}
+		if j, err := os.ReadFile(base + ".words.json"); err == nil {
+			json.Unmarshal(j, &s.Words)
 		}
 		return s, nil
 	}
 	s, err := c.Voice.Speak(ctx, text)
 	if err != nil {
-		return nil, err
+		return Spoken{}, err
 	}
 	if err := os.MkdirAll(c.Dir, 0o755); err == nil {
-		b := make([]byte, 2*len(s))
-		for i, v := range s {
+		b := make([]byte, 2*len(s.Audio))
+		for i, v := range s.Audio {
 			binary.LittleEndian.PutUint16(b[2*i:], uint16(v))
 		}
-		tmp := path + ".tmp"
+		if j, err := json.Marshal(s.Words); err == nil {
+			os.WriteFile(base+".words.json", j, 0o644)
+		}
+		tmp := base + ".pcm.tmp"
 		if os.WriteFile(tmp, b, 0o644) == nil {
-			os.Rename(tmp, path)
+			os.Rename(tmp, base+".pcm")
 		}
 	}
 	return s, nil
@@ -96,13 +135,13 @@ type Silent struct{ WordsPerSecond float64 }
 
 func (Silent) Key() string { return "silent" }
 
-func (v Silent) Speak(_ context.Context, text string) (Speech, error) {
+func (v Silent) Speak(_ context.Context, text string) (Spoken, error) {
 	wps := v.WordsPerSecond
 	if wps <= 0 {
 		wps = 2.8
 	}
-	words := len(strings.Fields(text))
-	return make(Speech, int(float64(words)/wps*Rate)), nil
+	n := len(strings.Fields(text))
+	return Spoken{Audio: make(Speech, int(float64(n)/wps*Rate))}, nil // timings left to the core
 }
 
 // Engines lists the voice engines scripts can name.

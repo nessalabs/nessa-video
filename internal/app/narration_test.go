@@ -24,11 +24,14 @@ import (
 type tone struct{}
 
 func (tone) Key() string { return "tone" }
-func (tone) Speak(_ context.Context, text string) (voice.Speech, error) {
-	n := len(strings.Fields(text)) * voice.Rate
-	s := make(voice.Speech, n)
-	for i := range s {
-		s[i] = int16(8000 * math.Sin(2*math.Pi*440*float64(i)/voice.Rate))
+func (tone) Speak(_ context.Context, text string) (voice.Spoken, error) {
+	fields := strings.Fields(text)
+	s := voice.Spoken{Audio: make(voice.Speech, len(fields)*voice.Rate)}
+	for i := range s.Audio {
+		s.Audio[i] = int16(8000 * math.Sin(2*math.Pi*440*float64(i)/voice.Rate))
+	}
+	for i, w := range fields {
+		s.Words = append(s.Words, voice.Word{Text: w, Start: float64(i), End: float64(i) + 0.9})
 	}
 	return s, nil
 }

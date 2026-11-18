@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	c "github.com/nessalabs/nessa-video/internal/composition"
 	"github.com/nessalabs/nessa-video/internal/encode"
@@ -59,7 +60,7 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 	v := rep.video
 	st := &stage.Stage{Tokens: v.Tokens, Measure: vs.Measure, W: v.Width, H: v.Height}
 
-	speech := map[[2]int]voice.Speech{}
+	speech := map[[2]int]voice.Spoken{}
 	if v.Voice != nil && !vs.Mute {
 		if vs.NewVoice == nil || vs.EncodeAudio == nil {
 			return RenderStats{}, rep, errors.New("this build cannot narrate; render with --mute")
@@ -72,7 +73,15 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 			return RenderStats{}, rep, err
 		}
 		for k, s := range speech {
-			v.Scenes[k[0]].Steps[k[1]].Speech = s.Seconds()
+			st := &v.Scenes[k[0]].Steps[k[1]]
+			st.Speech = s.Audio.Seconds()
+			if _, own := st.Lookup("speak"); !own {
+				timed := s.Words
+				if len(timed) == 0 { // the engine gave no timings: estimate them
+					timed = voice.EstimateWords(voice.Plain(st.Spoken()), s.Audio.Seconds())
+				}
+				st.Words = alignWords(st.Text, timed)
+			}
 		}
 	}
 	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
@@ -173,7 +182,7 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 }
 
 // speakAll narrates every say step, a few at a time.
-func speakAll(ctx context.Context, v *c.Video, vo voice.Voice, log func(string)) (map[[2]int]voice.Speech, error) {
+func speakAll(ctx context.Context, v *c.Video, vo voice.Voice, log func(string)) (map[[2]int]voice.Spoken, error) {
 	type job struct {
 		key  [2]int
 		text string
@@ -191,7 +200,7 @@ func speakAll(ctx context.Context, v *c.Video, vo voice.Voice, log func(string))
 	if log != nil && len(jobs) > 0 {
 		log(fmt.Sprintf("speaking %d lines", len(jobs)))
 	}
-	out := map[[2]int]voice.Speech{}
+	out := map[[2]int]voice.Spoken{}
 	var mu sync.Mutex
 	var firstErr error
 	sem := make(chan struct{}, 4)
@@ -219,11 +228,11 @@ func speakAll(ctx context.Context, v *c.Video, vo voice.Voice, log func(string))
 }
 
 // mixNarration places each spoken line at its cue on one track.
-func mixNarration(p *motion.Plan, speech map[[2]int]voice.Speech) []int16 {
+func mixNarration(p *motion.Plan, speech map[[2]int]voice.Spoken) []int16 {
 	n := int(math.Ceil(p.Total * voice.Rate))
 	mix := make([]int32, n)
 	for _, cue := range p.Narration() {
-		s := speech[[2]int{cue.Scene, cue.Step}]
+		s := speech[[2]int{cue.Scene, cue.Step}].Audio
 		at := int(cue.At * voice.Rate)
 		for i, v := range s {
 			if at+i >= n {
@@ -235,6 +244,63 @@ func mixNarration(p *motion.Plan, speech map[[2]int]voice.Speech) []int16 {
 	out := make([]int16, n)
 	for i, v := range mix {
 		out[i] = int16(max(-32768, min(32767, v)))
+	}
+	return out
+}
+
+// alignWords times each word of a caption from the voice's word timings.
+// Words are matched in order ignoring case and punctuation; a caption word
+// the voice did not say exactly (a number read out, say) takes the time
+// between its neighbours. It returns nil if too little matches.
+func alignWords(caption string, spoken []voice.Word) []c.WordTime {
+	words := strings.Fields(voice.Plain(caption))
+	if len(words) == 0 || len(spoken) == 0 {
+		return nil
+	}
+	norm := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return unicode.ToLower(r)
+			}
+			return -1
+		}, s)
+	}
+	out := make([]c.WordTime, len(words))
+	found := make([]bool, len(words))
+	j, matched := 0, 0
+	for i, w := range words {
+		nw := norm(w)
+		for k := j; k < len(spoken) && k < j+4; k++ {
+			if norm(spoken[k].Text) == nw {
+				out[i] = c.WordTime{Start: spoken[k].Start, End: spoken[k].End}
+				found[i] = true
+				matched++
+				j = k + 1
+				break
+			}
+		}
+	}
+	if matched*2 < len(words) {
+		return nil
+	}
+	// fill unmatched words between their matched neighbours
+	end := spoken[len(spoken)-1].End
+	for i := range out {
+		if found[i] {
+			continue
+		}
+		lo, hi := 0.0, end
+		if i > 0 {
+			lo = out[i-1].End
+		}
+		for k := i + 1; k < len(out); k++ {
+			if found[k] {
+				hi = out[k].Start
+				break
+			}
+		}
+		out[i] = c.WordTime{Start: lo, End: max(lo, hi)}
+		found[i] = true
 	}
 	return out
 }

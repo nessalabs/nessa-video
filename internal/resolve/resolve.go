@@ -533,7 +533,19 @@ func (r *resolver) step(n *script.Node) c.Step {
 			}
 		}
 		if st.Text == "" {
-			r.diags.Errorf(n.Pos, `e.g. say "The request travels to the server"`, "say needs quoted text")
+			// say speak="…" with no caption shows the spoken words as the caption
+			if v, ok := st.Lookup("speak"); ok {
+				st.Text = v
+				kept := st.Decls[:0]
+				for _, d := range st.Decls {
+					if d.Key != "speak" {
+						kept = append(kept, d)
+					}
+				}
+				st.Decls = kept
+			} else {
+				r.diags.Errorf(n.Pos, `e.g. say "The request travels to the server"`, "say needs quoted text")
+			}
 		}
 		return st
 	case "wait", "hold":

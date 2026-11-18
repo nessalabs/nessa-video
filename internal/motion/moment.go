@@ -127,6 +127,22 @@ func (m Moment) Camera() (from, to *c.Element, mix float64) {
 	return
 }
 
+// Spoken returns the current caption's word timings and how long it has been
+// showing, so captions can follow the voice. Words is nil without timings.
+func (m Moment) Spoken() (words []c.WordTime, elapsed float64) {
+	sp := m.plan
+	var cur *Caption
+	for i := range sp.captions {
+		if m.T >= sp.captions[i].Start {
+			cur = &sp.captions[i]
+		}
+	}
+	if cur == nil {
+		return nil, 0
+	}
+	return cur.Words, m.T - cur.Start
+}
+
 // Caption returns the caption text and its opacity.
 func (m Moment) Caption() (string, float64) {
 	sp := m.plan

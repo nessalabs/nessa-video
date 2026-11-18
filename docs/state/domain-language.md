@@ -114,3 +114,4 @@ line, so they never import a drawing or video library directly.
 | Fit | Turning rows and scaling a scene so it fits the frame |
 | Narration | The spoken say lines of a video, mixed onto one audio track |
 | Cue | Where a spoken line starts on the video's timeline |
+| Word timing | When each word of a spoken line is said; reported by the voice or estimated by the core |

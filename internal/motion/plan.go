@@ -66,6 +66,7 @@ type Caption struct {
 	Start  float64
 	Step   int
 	Speech float64
+	Words  []c.WordTime
 }
 
 // Mark changes which lines of a code block, or cells of an array, are emphasised.
@@ -424,7 +425,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				words := len(strings.Fields(strings.ReplaceAll(st.Spoken(), "==", "")))
 				speech = float64(words) / tm.WordsPerSec
 			}
-			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech})
+			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech, Words: st.Words})
 			voiceFree = start + speech + 0.2
 			captionNeed = math.Max(captionNeed, start+speech)
 		}

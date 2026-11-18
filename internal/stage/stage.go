@@ -148,7 +148,12 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 		t := opt.Type["caption"]
 		p.m = base
 		p.opacity = op
-		p.runs(text, dw/2, dh-72, t, s.col("ink-2"), s.col("hi"), render.Middle)
+		p.draw = 1
+		if words, elapsed := m.Spoken(); words != nil {
+			p.followWords(text, words, elapsed, dw/2, dh-72, t)
+		} else {
+			p.runs(text, dw/2, dh-72, t, s.col("ink-2"), s.col("hi"), render.Middle)
+		}
 	}
 	return l
 }
@@ -896,4 +901,80 @@ func (p *painter) metric(e *c.Element, r layout.Rect, lk look, ap motion.Appeara
 		p.runs(v.Value, r.CX(), y, lab, cl, s.col("hi"), render.Middle)
 	}
 	p.opacity = opacity
+}
+
+// capWord is one caption word and whether it sits inside ==emphasis==.
+type capWord struct {
+	text string
+	emph bool
+}
+
+// captionWords splits a caption into words in the same order as
+// strings.Fields(layout.Plain(text)), keeping which ones are emphasised.
+func captionWords(text string) []capWord {
+	var out []capWord
+	emph := false
+	for _, tok := range strings.Fields(text) {
+		var b strings.Builder
+		wordEmph := false
+		for i := 0; i < len(tok); i++ {
+			if i+1 < len(tok) && tok[i] == '=' && tok[i+1] == '=' {
+				emph = !emph
+				i++
+				continue
+			}
+			if i+1 < len(tok) && tok[i] == '_' && tok[i+1] == '_' {
+				i++
+				continue
+			}
+			if emph {
+				wordEmph = true
+			}
+			b.WriteByte(tok[i])
+		}
+		if b.Len() > 0 {
+			out = append(out, capWord{b.String(), wordEmph})
+		}
+	}
+	return out
+}
+
+// followWords draws a caption that follows the voice: words not yet said
+// are dim, the word being said is bright, and said words settle to the
+// caption colour, or stay bright when emphasised.
+func (p *painter) followWords(text string, times []c.WordTime, elapsed, cx, y float64, t layout.Type) {
+	s := p.s
+	words := captionWords(text)
+	space := s.Measure.Measure(" ", t.Font, t.Size)
+	total := 0.0
+	widths := make([]float64, len(words))
+	for i, w := range words {
+		widths[i] = s.Measure.Measure(w.text, t.Font, t.Size)
+		total += widths[i]
+	}
+	total += space * float64(max(len(words)-1, 0))
+	x := cx - total/2
+	dim, said, now := s.col("ink-dim"), s.col("ink-2"), s.col("hi")
+	for i, w := range words {
+		cl := dim
+		if i < len(times) {
+			wt := times[i]
+			rest := said
+			if w.emph {
+				rest = now
+			}
+			switch {
+			case elapsed < wt.Start:
+				cl = dim
+			case elapsed < wt.End:
+				cl = lerpColor(dim, now, math.Min(1, (elapsed-wt.Start)/0.08))
+			default:
+				cl = lerpColor(now, rest, math.Min(1, (elapsed-wt.End)/0.2))
+			}
+		} else if w.emph {
+			cl = now
+		}
+		p.text(w.text, x, y, t, cl, render.Start)
+		x += widths[i] + space
+	}
 }

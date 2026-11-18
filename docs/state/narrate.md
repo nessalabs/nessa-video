@@ -3,7 +3,7 @@ id: narrate
 title: Narrate a video
 kind: flow
 status: implemented
-summary: With a voice set, each say line is spoken, scenes stretch to fit the speech, and the MP4 gets an AAC audio track. ElevenLabs is the first voice; local models come later.
+summary: With a voice set, each say line is spoken, captions follow the voice word by word, scenes stretch to fit the speech, and the MP4 gets an AAC audio track. ElevenLabs is the first voice; local models come later.
 parent: reel
 sources:
   - internal/voice/voice.go
@@ -56,8 +56,10 @@ scene fix
 ```
 
 `voice elevenlabs VOICE_ID` picks a voice from the ElevenLabs library; `model=`
-is optional. `say` speaks its caption, without the `==` marks; `speak=` gives
-different words to speak when the caption should stay short. `voice silent`
+is optional. `say` speaks its caption, without the `==` marks.
+`say speak="…"` with no caption shows and speaks the same words. Giving both,
+`say "short caption" speak="…"`, shows the short caption and speaks the longer
+sentence. `voice silent`
 times a script as if it were narrated, with no sound and no service, which is
 useful for tests.
 
@@ -81,10 +83,25 @@ A scene lasts at least until its last line has been spoken, plus the usual
 hold. Speech length comes from the actual audio at render time, so a narrated
 render can be a little longer or shorter than `reel check` estimated.
 
+## Captions that follow the voice
+
+When a line is spoken, its caption follows the voice: words not yet said are
+dim, the word being said is bright, and said words settle back to the caption
+colour. `==emphasised==` words stay bright once said.
+
+Word timing is generic. A voice adapter reports the timings its engine knows;
+ElevenLabs reports a time for every character, which its adapter groups into
+words. The core then matches those words to the caption's words, ignoring
+case and punctuation, and gives any word the voice said differently (a number
+read out in full) the time between its neighbours. If an engine reports no
+timings, the core estimates them from the length of the audio, weighting
+longer words, so every voice gets a following caption. When `speak=` and the
+caption differ, the caption shows as one line instead.
+
 ## Caching
 
-Spoken lines are cached by voice, model and text in the user cache folder
-(`~/Library/Caches/reel/voice` on macOS). Re-rendering a script only pays for
+Spoken lines and their word timings are cached by voice, model and text in
+the user cache folder (`~/Library/Caches/reel/voice` on macOS). Re-rendering a script only pays for
 lines that changed, and an unchanged script renders identically and offline.
 
 ## The audio track
