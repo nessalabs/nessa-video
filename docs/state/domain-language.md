@@ -104,4 +104,6 @@ line, so they never import a drawing or video library directly.
 | Diagnostic | A problem with a position, severity and fix hint |
 | Hunk | One `@@` section of a diff |
 | Focus | The lines of a code block shown at full strength |
-| Mark | A step that moves the focus to other lines |
+| Mark | A step that moves the focus to other lines or cells |
+| Pointer | A named index shown above an array cell |
+| Rank | A Mermaid node's column (LR) or row (TD), by longest path from a start |

@@ -64,9 +64,23 @@ type Caption struct {
 	Start float64
 }
 
-// Mark changes which lines of a code or diff block are emphasised.
+// Mark changes which lines of a code block, or cells of an array, are emphasised.
 type Mark struct {
 	Lines      source.Selection
+	Cells      []int
+	Start, Dur float64
+}
+
+// PointerMove moves a named array pointer to another cell.
+type PointerMove struct {
+	Name       string
+	To         int
+	Start, Dur float64
+}
+
+// SwapMove exchanges two array cells.
+type SwapMove struct {
+	I, J       int
 	Start, Dur float64
 }
 
@@ -91,6 +105,9 @@ type ScenePlan struct {
 	captions []Caption
 	sends    []Send
 	marks    map[*c.Element][]Mark
+	ptrs     map[*c.Element][]PointerMove
+	swaps    map[*c.Element][]SwapMove
+	plays    map[*c.Element]Anim
 	endState map[*c.Element]string // by identity
 	endCam   *c.Element            // identity
 	closeAt  float64               // when exits for the next scene's clear begin; 0 if none
@@ -162,7 +179,9 @@ func seconds(s string) (float64, bool) {
 func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	sp := &ScenePlan{Scene: sc, enter: map[*c.Element]Anim{}, exit: map[*c.Element]Anim{},
 		types: map[*c.Element]Anim{}, initial: map[*c.Element]string{}, changes: map[*c.Element][]StateChange{},
-		marks:    map[*c.Element][]Mark{},
+		marks: map[*c.Element][]Mark{},
+		ptrs:  map[*c.Element][]PointerMove{}, swaps: map[*c.Element][]SwapMove{},
+		plays:    map[*c.Element]Anim{},
 		endState: map[*c.Element]string{}}
 
 	// carried elements keep their state and the camera keeps its target
@@ -276,6 +295,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			dur = tm.Camera
 		case "send":
 			dur = tm.Send
+		case "ptr":
+			dur = .45
+		case "swap":
+			dur = .6
+		case "play":
+			dur = 2
+		case "walk":
+			dur = float64(len(st.Args)) * .45
 		case "type":
 			chars := 0
 			for _, e := range targets {
@@ -334,11 +361,54 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				sp.types[e] = Anim{Mode: "type", Start: start, Dur: dur}
 			}
 		case "mark":
+			mk := Mark{Start: start, Dur: dur}
 			if v, ok := st.Lookup("lines"); ok {
-				if sel, err := source.ParseSelection(v); err == nil {
-					for _, e := range targets {
-						sp.marks[e] = append(sp.marks[e], Mark{Lines: sel, Start: start, Dur: dur})
+				mk.Lines, _ = source.ParseSelection(v)
+			}
+			if v, ok := st.Lookup("cells"); ok {
+				mk.Cells, _ = source.ParseCells(v)
+			}
+			for _, e := range targets {
+				sp.marks[e] = append(sp.marks[e], mk)
+			}
+		case "ptr":
+			for _, e := range targets {
+				for _, d := range st.Decls {
+					if i, err := strconv.Atoi(d.Value); err == nil {
+						sp.ptrs[e] = append(sp.ptrs[e], PointerMove{Name: d.Key, To: i, Start: start, Dur: dur})
 					}
+				}
+			}
+		case "swap":
+			if len(st.Args) == 2 {
+				i, err1 := strconv.Atoi(st.Args[0])
+				j, err2 := strconv.Atoi(st.Args[1])
+				if err1 == nil && err2 == nil {
+					for _, e := range targets {
+						sp.swaps[e] = append(sp.swaps[e], SwapMove{I: i, J: j, Start: start, Dur: dur})
+					}
+				}
+			}
+		case "play":
+			for _, e := range targets {
+				sp.plays[e] = Anim{Mode: "play", Start: start, Dur: dur}
+			}
+		case "walk":
+			for _, e := range targets {
+				var prev *c.Element
+				for k, id := range st.Args {
+					node := partOf(e, id)
+					if node == nil {
+						continue
+					}
+					at := start + float64(k)*.45
+					sp.changes[node] = append(sp.changes[node], StateChange{El: node, From: state(node), To: "focus", Start: at, Dur: tm.State})
+					if prev != nil {
+						if link := linkBetween(e, prev, node); link != nil {
+							sp.changes[link] = append(sp.changes[link], StateChange{El: link, From: state(link), To: "focus", Start: at - .2, Dur: tm.State})
+						}
+					}
+					prev = node
 				}
 			}
 		case "say":
@@ -457,4 +527,29 @@ func TimingsFrom(tokens map[string]string) Timings {
 	set("motion-stagger", &tm.Stagger)
 	set("motion-hold", &tm.Hold)
 	return tm
+}
+
+// partOf finds the part named id inside owner.
+func partOf(owner *c.Element, id string) *c.Element {
+	var found *c.Element
+	owner.Walk(func(x *c.Element) {
+		if found == nil && x.OwnerElement() == owner && x.PartName() == id {
+			found = x
+		}
+	})
+	return found
+}
+
+// linkBetween finds a connector inside owner from a to b.
+func linkBetween(owner, a, b *c.Element) *c.Element {
+	var found *c.Element
+	for _, x := range owner.Children {
+		if found != nil || x.Edge == nil || x.Edge.From == nil || x.Edge.To == nil {
+			continue
+		}
+		if x.Edge.From.Matches(a) && x.Edge.To.Matches(b) {
+			found = x
+		}
+	}
+	return found
 }

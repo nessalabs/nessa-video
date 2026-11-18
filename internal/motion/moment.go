@@ -178,3 +178,111 @@ func (m Moment) Focus(e *c.Element) (from, to source.Selection, mix float64) {
 	}
 	return
 }
+
+// Cells returns which array cells are emphasised: the set being left, the
+// set being moved to (nil means all) and progress.
+func (m Moment) Cells(e *c.Element) (from, to []int, mix float64) {
+	mix = 1
+	for _, mk := range m.plan.marks[e] {
+		if mk.Cells == nil || m.T < mk.Start {
+			continue
+		}
+		from, to = to, mk.Cells
+		mix = 1
+		if mk.Dur > 0 {
+			mix = Ease((m.T - mk.Start) / mk.Dur)
+		}
+	}
+	return
+}
+
+// PointerPos is where a named pointer is, in cells; fractional while moving.
+type PointerPos struct {
+	Name string
+	Pos  float64
+}
+
+// Pointers returns the array's pointers at this moment.
+func (m Moment) Pointers(e *c.Element) []PointerPos {
+	if e.Array == nil {
+		return nil
+	}
+	pos := map[string]float64{}
+	var names []string
+	for _, p := range e.Array.Pointers {
+		pos[p.Name] = float64(p.Index)
+		names = append(names, p.Name)
+	}
+	for _, mv := range m.plan.ptrs[e] {
+		if m.T < mv.Start {
+			break
+		}
+		if _, ok := pos[mv.Name]; !ok {
+			names = append(names, mv.Name)
+			pos[mv.Name] = float64(mv.To)
+			continue
+		}
+		f := 1.0
+		if mv.Dur > 0 {
+			f = Ease((m.T - mv.Start) / mv.Dur)
+		}
+		pos[mv.Name] += (float64(mv.To) - pos[mv.Name]) * f
+	}
+	out := make([]PointerPos, len(names))
+	for i, n := range names {
+		out[i] = PointerPos{n, pos[n]}
+	}
+	return out
+}
+
+// Slots returns, for each value of the array in its original order, the
+// cell it sits in; fractional while a swap is under way.
+func (m Moment) Slots(e *c.Element) []float64 {
+	if e.Array == nil {
+		return nil
+	}
+	n := len(e.Array.Values)
+	at := make([]int, n) // value index -> slot
+	in := make([]int, n) // slot -> value index
+	for i := range at {
+		at[i], in[i] = i, i
+	}
+	out := make([]float64, n)
+	for i := range out {
+		out[i] = float64(i)
+	}
+	for _, sw := range m.plan.swaps[e] {
+		if m.T < sw.Start || sw.I < 0 || sw.J < 0 || sw.I >= n || sw.J >= n {
+			continue
+		}
+		a, b := in[sw.I], in[sw.J]
+		f := 1.0
+		if sw.Dur > 0 {
+			f = Ease((m.T - sw.Start) / sw.Dur)
+		}
+		if f < 1 {
+			for v := range out {
+				out[v] = float64(at[v])
+			}
+			out[a] = float64(sw.I) + float64(sw.J-sw.I)*f
+			out[b] = float64(sw.J) + float64(sw.I-sw.J)*f
+			return out
+		}
+		at[a], at[b] = sw.J, sw.I
+		in[sw.I], in[sw.J] = b, a
+	}
+	for v := range out {
+		out[v] = float64(at[v])
+	}
+	return out
+}
+
+// Playhead returns the playhead of a timeline: its share of the axis and
+// whether it is showing.
+func (m Moment) Playhead(e *c.Element) (float64, bool) {
+	a, ok := m.plan.plays[e]
+	if !ok || m.T < a.Start {
+		return 0, false
+	}
+	return clamp((m.T - a.Start) / a.Dur), true
+}

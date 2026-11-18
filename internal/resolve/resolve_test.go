@@ -250,3 +250,93 @@ scene s
 		t.Errorf("without a file reader: %v", r.Diags)
 	}
 }
+
+func TestDataBlocks(t *testing.T) {
+	res := Script(`video "t"
+scene s
+  array #a 1 3 4 ptr="lo=0 hi=2"
+  chart #c line
+    burst, before, after
+    1, 4, 1
+    2, 7, 1
+  timeline #tl unit=s
+    request A | 0-18 wait | *18-22 200
+  mermaid #flow
+    flowchart LR
+      C[Client] --> G[Gateway]
+      G --> H{Cache hit?}
+      H -- yes --> R[Respond]
+      H -->|no| D[(Database)]
+      D -.-> R
+  math "x^2"
+  ptr #a lo=1
+  swap #a 0 2
+  mark #a cells=0..1
+  walk #flow C G H
+  play #tl
+`)
+	if len(res.Diags) > 0 {
+		t.Fatalf("diags: %v", res.Diags)
+	}
+	root := res.Video.Scenes[0].Root
+	a := c.Select(root, mustSel(t, "#a"))[0].Array
+	if len(a.Values) != 3 || len(a.Pointers) != 2 || a.Pointers[1].Index != 2 {
+		t.Fatalf("array = %+v", a)
+	}
+	ch := c.Select(root, mustSel(t, "#c"))[0].Chart
+	if ch.Kind != "line" || len(ch.Series) != 2 || len(ch.Rows) != 2 || ch.Rows[1].Values[0] != 7 {
+		t.Fatalf("chart = %+v", ch)
+	}
+	tl := c.Select(root, mustSel(t, "#tl"))[0].Timeline
+	if tl.Unit != "s" || len(tl.Lanes[0].Spans) != 2 || !tl.Lanes[0].Spans[1].Strong || tl.End() != 22 {
+		t.Fatalf("timeline = %+v", tl)
+	}
+	h := c.Select(root, mustSel(t, "#flow/H"))
+	if len(h) != 1 || h[0].Kind() != "decision" || h[0].Text != "Cache hit?" {
+		t.Fatalf("H = %+v", h)
+	}
+	if d := c.Select(root, mustSel(t, "#flow/D"))[0]; d.Kind() != "store" {
+		t.Fatalf("D kind = %s", d.Kind())
+	}
+	edges := c.Select(root, mustSel(t, "#flow edge"))
+	if len(edges) != 5 {
+		t.Fatalf("edges = %d", len(edges))
+	}
+	labels := map[string]string{}
+	for _, e := range edges {
+		labels[e.Edge.From.Src+e.Edge.To.Src] = e.Text + "|" + e.Edge.Op
+	}
+	if labels["#H#R"] != "yes|->" || labels["#H#D"] != "no|->" || labels["#D#R"] != "|..>" {
+		t.Fatalf("edge labels = %v", labels)
+	}
+	rank := func(id string) string {
+		v, _ := c.Select(root, mustSel(t, "#flow/"+id))[0].Attr("rank")
+		return v
+	}
+	if rank("C") != "0" || rank("H") != "2" || rank("R") != "4" {
+		t.Fatalf("ranks C=%s H=%s R=%s", rank("C"), rank("H"), rank("R"))
+	}
+
+	bad := []struct{ src, want string }{
+		{"video \"t\"\nscene s\n  array #a", "array needs values"},
+		{"video \"t\"\nscene s\n  array #a 1 2 ptr=\"lo=5\"", "outside the array"},
+		{"video \"t\"\nscene s\n  chart pie\n    a, b\n    1, 2", "unknown chart kind"},
+		{"video \"t\"\nscene s\n  chart\n    a, b\n    x, y", `bad value "y"`},
+		{"video \"t\"\nscene s\n  timeline\n    lane | 5-2 back", "bad span"},
+		{"video \"t\"\nscene s\n  mermaid\n    sequenceDiagram\n    A->>B: hi", "only Mermaid flowcharts"},
+		{"video \"t\"\nscene s\n  mermaid\n    flowchart LR\n    A --> ", "link has no target"},
+		{"video \"t\"\nscene s\n  array #a 1 2\n  swap #a 1", "swap needs"},
+		{"video \"t\"\nscene s\n  array #a 1 2\n  ptr #a lo=x", "bad position"},
+		{"video \"t\"\nscene s\n  math", "math needs a formula"},
+	}
+	for _, b := range bad {
+		r := Script(b.src)
+		var msgs []string
+		for _, d := range r.Diags {
+			msgs = append(msgs, d.Error())
+		}
+		if all := strings.Join(msgs, "\n"); !strings.Contains(all, b.want) {
+			t.Errorf("%q: want %q in:\n%s", b.src, b.want, all)
+		}
+	}
+}

@@ -90,5 +90,5 @@ sizes from the theme's tokens.
 - Connectors are straight when their ends line up and right-angled when they
   do not. Labels sit above a horizontal segment.
 - Code and diff blocks are drawn as panels; see [Show code and diffs](show-code.md).
-- Arrays, charts, timelines, Mermaid and maths are drawn as labelled dashed
-  placeholders until their milestones.
+- Arrays, charts, timelines, diagrams and maths are drawn as described in
+  [Show arrays, charts, timelines, diagrams and maths](show-data.md).

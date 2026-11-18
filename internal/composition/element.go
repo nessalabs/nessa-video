@@ -26,8 +26,11 @@ type Element struct {
 	// Edge is set when the element is a connector.
 	Edge *Edge
 
-	// Code is set for code and diff blocks.
-	Code *CodeBlock
+	// Content blocks; at most one is set.
+	Code     *CodeBlock
+	Array    *ArrayBlock
+	Chart    *ChartBlock
+	Timeline *TimelineBlock
 
 	parent   *Element
 	owner    *Element // component instance that owns this part

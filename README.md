@@ -5,13 +5,14 @@ with code-review videos. An agent writes a `.reel` script; reel checks it and
 renders it. It is one binary with no runtime dependencies.
 
 Status: `reel check`, `reel still`, `reel render` and `reel ref` work.
-Code and diff blocks have syntax colours and focus. Arrays, charts,
-timelines, Mermaid and maths are drawn as placeholders for now.
+Code, diffs, arrays, charts, timelines, Mermaid flowcharts and maths are all
+drawn and can be animated.
 
 ```sh
 make build                      # links x264 statically; needs x264 to build only
 ./bin/reel render examples/cache-refresh.reel
 ./bin/reel render examples/code-review.reel
+./bin/reel render examples/data-blocks.reel
 ./bin/reel check examples/cache-refresh.reel
 ./bin/reel check --explain '#p3' examples/cache-refresh.reel
 ./bin/reel still -o out examples/cache-refresh.reel

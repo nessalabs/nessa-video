@@ -32,6 +32,24 @@ type Measurer interface {
 	Measure(s, font string, size float64) float64
 }
 
+// Typesetter is the optional port for maths. It returns the formula's
+// outline as SVG path data with its top-left corner at 0,0, and its size.
+type Typesetter interface {
+	Typeset(tex string, size float64) (path string, w, h float64, err error)
+}
+
+// Block sizes in design units, shared with the stage.
+const (
+	CellSize   = 64.0
+	CellGap    = 8.0
+	PointerTop = 40.0
+	IndexBand  = 26.0
+	LaneHeight = 40.0
+	LaneLabel  = 120.0
+	AxisBand   = 34.0
+	MathSize   = 30.0
+)
+
 // Type is a font and size for one kind of text.
 type Type struct {
 	Font string
@@ -204,6 +222,22 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		return r.Right(), r.Bottom()
 	case el.Code != nil:
 		return e.codePanel(el)
+	case el.Array != nil:
+		n := float64(len(el.Array.Values))
+		return n*CellSize + (n-1)*CellGap, PointerTop + CellSize + IndexBand
+	case el.Chart != nil:
+		return 460, 300
+	case el.Timeline != nil:
+		return 600, 28 + LaneHeight*float64(len(el.Timeline.Lanes)) + AxisBand
+	case kind == "math":
+		if ts, ok := e.m.(Typesetter); ok {
+			if _, w, h, err := ts.Typeset(el.Text, num(el, "size", MathSize)); err == nil {
+				return w, h
+			}
+		}
+		return e.opt.BlockSize[0], 80
+	case kind == "mermaid":
+		return e.graph(el, nil)
 	case textKinds[kind]:
 		return e.text(el)
 	case kind == "box" || kind == "decision":
@@ -388,7 +422,73 @@ func (e *engine) place(el *c.Element, r Rect) {
 				e.place(ch, Rect{inner.X + num(ch, "x", 0), inner.Y + num(ch, "y", 0), s[0], s[1]})
 			}
 		}
+	case kind == "mermaid":
+		e.graph(el, &inner)
 	}
+}
+
+// graph sizes (at == nil) or places a Mermaid diagram: ranks become columns
+// for LR and rows for TD, and nodes keep their order within a rank.
+func (e *engine) graph(el *c.Element, at *Rect) (float64, float64) {
+	lr := str(el, "dir", "TD") == "LR" || str(el, "dir", "") == "RL"
+	const rankGap, nodeGap = 80.0, 36.0
+	type rk struct {
+		nodes []*c.Element
+		main  float64 // size along the rank direction (column width for LR)
+		cross float64 // total size across
+	}
+	var ranks []*rk
+	for _, ch := range el.Children {
+		if !inFlow(ch) {
+			continue
+		}
+		w, h := e.measure(ch)
+		ri := int(num(ch, "rank", 0))
+		for len(ranks) <= ri {
+			ranks = append(ranks, &rk{})
+		}
+		r := ranks[ri]
+		r.nodes = append(r.nodes, ch)
+		along, across := h, w
+		if lr {
+			along, across = w, h
+		}
+		r.main = max(r.main, along)
+		if len(r.nodes) > 1 {
+			r.cross += nodeGap
+		}
+		r.cross += across
+	}
+	var total, crossMax float64
+	for i, r := range ranks {
+		if i > 0 {
+			total += rankGap
+		}
+		total += r.main
+		crossMax = max(crossMax, r.cross)
+	}
+	if at == nil {
+		if lr {
+			return total, crossMax
+		}
+		return crossMax, total
+	}
+	pos := 0.0
+	for _, r := range ranks {
+		off := (crossMax - r.cross) / 2
+		for _, ch := range r.nodes {
+			s := e.size[ch]
+			if lr {
+				e.place(ch, Rect{at.X + pos + (r.main-s[0])/2, at.Y + off, s[0], s[1]})
+				off += s[1] + nodeGap
+			} else {
+				e.place(ch, Rect{at.X + off, at.Y + pos + (r.main-s[1])/2, s[0], s[1]})
+				off += s[0] + nodeGap
+			}
+		}
+		pos += r.main + rankGap
+	}
+	return 0, 0
 }
 
 func crossPos(align string, start, avail, size float64) float64 {

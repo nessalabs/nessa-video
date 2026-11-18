@@ -203,3 +203,26 @@ func (s Selection) Has(l Line) bool {
 	}
 	return false
 }
+
+// ParseCells reads 0-based cell positions like "2", "2..4" or "0,3..5".
+func ParseCells(s string) ([]int, error) {
+	var out []int
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		a, b, isRange := strings.Cut(part, "..")
+		from, err := strconv.Atoi(a)
+		if err != nil || from < 0 {
+			return nil, fmt.Errorf("bad position %q", a)
+		}
+		to := from
+		if isRange {
+			if to, err = strconv.Atoi(b); err != nil || to < from {
+				return nil, fmt.Errorf("bad range %q", part)
+			}
+		}
+		for i := from; i <= to; i++ {
+			out = append(out, i)
+		}
+	}
+	return out, nil
+}

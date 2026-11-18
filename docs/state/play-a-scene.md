@@ -77,6 +77,10 @@ terminal or text block character by character; inline marks such as
 `==this==` are skipped so emphasis is never cut in half. `camera zoom`
 moves the view to frame its target and `camera reset` moves back.
 `mark #d lines=…` moves the focus of a code or diff block to other lines.
+For data blocks, `ptr` slides an array pointer, `swap` exchanges two cells,
+`mark #a cells=…` brightens cells, `walk` lights a diagram's nodes in order
+and `play` sweeps a timeline's playhead; see
+[Show arrays, charts, timelines, diagrams and maths](show-data.md).
 
 ## Leaving
 

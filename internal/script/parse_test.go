@@ -127,3 +127,16 @@ func TestParseDiags(t *testing.T) {
 		}
 	}
 }
+
+func TestQuotedEscapes(t *testing.T) {
+	nodes, d := Parse("math \"a \\Rightarrow b \\nabla \\\"q\\\" c\\\\d\"\nlabel \"one\\ntwo \\\"x\\\"\"")
+	if len(d) > 0 {
+		t.Fatal(d)
+	}
+	if got := nodes[0].Args[0].Text; got != `a \Rightarrow b \nabla "q" c\d` {
+		t.Errorf("math text = %q", got)
+	}
+	if got := nodes[1].Args[0].Text; got != "one\ntwo \"x\"" {
+		t.Errorf("label text = %q", got)
+	}
+}

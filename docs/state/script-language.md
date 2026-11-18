@@ -36,7 +36,10 @@ scene request
   is a connector.
 - `with` at the start runs a step together with the previous one.
 - `# ` starts a comment. `#name` without a space is an id.
-- `terminal`, `code`, `diff` and `math` keep their indented lines exactly as written.
+- `terminal`, `code`, `diff`, `chart`, `timeline`, `mermaid` and `math` keep
+  their indented lines exactly as written.
+- In quoted text, `\"` is a quote, `\\` a backslash and `\n` a new line. On a
+  `math` line other backslashes are left for TeX.
   So does a block between two ```` ``` ```` lines, such as Mermaid.
 
 ## Mistakes the parser reports

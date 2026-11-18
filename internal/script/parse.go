@@ -59,7 +59,8 @@ func (n *Node) Prop(key string) (string, bool) {
 var EdgeOps = []string{"<->", "..>", "-->", "->", "-|", "~>", "--", ".."}
 
 // RawKinds take their indented body verbatim instead of parsing it.
-var RawKinds = map[string]bool{"terminal": true, "code": true, "diff": true, "math": true}
+var RawKinds = map[string]bool{"terminal": true, "code": true, "diff": true, "math": true,
+	"chart": true, "timeline": true, "mermaid": true}
 
 type line struct {
 	no, indent int
@@ -187,6 +188,7 @@ type token struct {
 func (p *parser) tokenize(l line) []token {
 	var toks []token
 	s := l.text
+	tex := strings.HasPrefix(strings.TrimPrefix(s, "with "), "math ")
 	i := 0
 	for i < len(s) {
 		if s[i] == ' ' {
@@ -199,7 +201,7 @@ func (p *parser) tokenize(l line) []token {
 			break // trailing comment
 		}
 		if s[i] == '"' {
-			str, n, ok := quoted(s[i:])
+			str, n, ok := quoted(s[i:], tex)
 			if !ok {
 				p.errf(pos, `add the closing "`, "unterminated string")
 			}
@@ -236,7 +238,7 @@ func (p *parser) tokenize(l line) []token {
 			key := word
 			j++
 			if j < len(s) && s[j] == '"' {
-				str, n, ok := quoted(s[j:])
+				str, n, ok := quoted(s[j:], tex)
 				if !ok {
 					p.errf(Pos{Line: l.no, Col: l.indent + j + 1}, `add the closing "`, "unterminated string")
 				}
@@ -262,19 +264,26 @@ func (p *parser) tokenize(l line) []token {
 	return toks
 }
 
-func quoted(s string) (string, int, bool) {
+func quoted(s string, tex bool) (string, int, bool) {
 	var b strings.Builder
 	for i := 1; i < len(s); i++ {
 		switch s[i] {
 		case '\\':
+			// \" and \\ are always escapes. \n is a newline, except on math
+			// lines, where backslashes belong to TeX (\nabla, \Rightarrow).
 			if i+1 < len(s) {
-				i++
-				switch s[i] {
-				case 'n':
+				switch nx := s[i+1]; {
+				case nx == '"' || nx == '\\':
+					b.WriteByte(nx)
+					i++
+				case nx == 'n' && !tex:
 					b.WriteByte('\n')
+					i++
 				default:
-					b.WriteByte(s[i])
+					b.WriteByte('\\')
 				}
+			} else {
+				b.WriteByte('\\')
 			}
 		case '"':
 			return b.String(), i + 1, true

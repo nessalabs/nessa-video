@@ -367,7 +367,9 @@ func (r *resolver) step(n *script.Node) c.Step {
 	args := n.Args
 	for _, p := range n.Props {
 		st.Decls = append(st.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
-		r.checkProp(p.Key, p.Pos, nil)
+		if n.Kind != "ptr" { // ptr takes pointer names as keys
+			r.checkProp(p.Key, p.Pos, nil)
+		}
 		switch p.Key {
 		case "for", "stagger":
 			r.duration(p.Value, p.Pos, false)
@@ -401,13 +403,46 @@ func (r *resolver) step(n *script.Node) c.Step {
 		return st
 	case "clear":
 		return st
+	case "ptr":
+		if len(args) == 0 || len(n.Props) == 0 {
+			r.diags.Errorf(n.Pos, "e.g. `ptr #a lo=2 hi=5`", "ptr needs an array and pointer positions")
+			return st
+		}
+		st.Target = r.parseSel(args[0].Text, args[0].Pos)
+		st.Decls = nil
+		for _, p := range n.Props {
+			if _, err := strconv.Atoi(p.Value); err != nil {
+				r.diags.Errorf(p.Pos, "positions are 0-based numbers", "bad position %s=%s", p.Key, p.Value)
+			}
+			st.Decls = append(st.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
+		}
+		return st
+	case "swap":
+		if len(args) != 3 {
+			r.diags.Errorf(n.Pos, "e.g. `swap #a 1 4`", "swap needs an array and two positions")
+			return st
+		}
+		for _, a := range args[1:] {
+			if _, err := strconv.Atoi(a.Text); err != nil {
+				r.diags.Errorf(a.Pos, "positions are 0-based numbers", "bad position %q", a.Text)
+			}
+		}
+	case "walk":
+		if len(args) < 2 {
+			r.diags.Errorf(n.Pos, "e.g. `walk #flow C G H`", "walk needs a diagram and node ids")
+			return st
+		}
 	case "mark":
-		if v, ok := n.Prop("lines"); ok {
+		if v, ok := n.Prop("cells"); ok {
+			if _, err := source.ParseCells(v); err != nil {
+				r.diags.Errorf(n.Pos, "e.g. mark #a cells=2..4 (0-based)", "bad cells %q: %v", v, err)
+			}
+		} else if v, ok := n.Prop("lines"); ok {
 			if _, err := source.ParseSelection(v); err != nil {
 				r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14", "bad lines %q: %v", v, err)
 			}
 		} else {
-			r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14", "mark needs lines=")
+			r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14 or mark #a cells=2..4", "mark needs lines= or cells=")
 		}
 	case "camera":
 		if len(args) == 0 {
@@ -472,8 +507,11 @@ func (r *resolver) element(parent *c.Element, n *script.Node, inst *instance) {
 		return
 	}
 	e := r.base(n, inst)
-	if n.Kind == "code" || n.Kind == "diff" {
+	switch n.Kind {
+	case "code", "diff":
 		r.codeBlock(e, n)
+	case "array", "chart", "timeline", "mermaid", "math":
+		r.block(e, n)
 	}
 	parent.Append(e)
 	for _, ch := range n.Children {

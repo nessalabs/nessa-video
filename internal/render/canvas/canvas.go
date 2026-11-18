@@ -3,8 +3,10 @@
 package canvas
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"strings"
 	"sync"
 
 	"github.com/tdewolff/canvas"
@@ -17,6 +19,7 @@ import (
 // Canvas is the pure-Go backend built on github.com/tdewolff/canvas.
 // Canvas implements render.Rasterizer.
 type Canvas struct {
+	math  sync.Map // tex -> mathResult
 	fonts map[string]*canvas.FontFamily
 	paths sync.Map // d -> *canvas.Path
 }
@@ -128,4 +131,51 @@ func (c *Canvas) Rasterize(l *render.List, dst *image.RGBA) error {
 	cv.RenderTo(ras)
 	ras.Close()
 	return nil
+}
+
+type mathResult struct {
+	d          string
+	w, h, base float64
+	err        error
+}
+
+// Typeset lays out a TeX formula with the built-in TeX engine and returns
+// its outline as SVG path data in a box with the top-left corner at 0,0,
+// sized so that 1em equals size. It implements layout.Typesetter.
+func (c *Canvas) Typeset(tex string, size float64) (string, float64, float64, error) {
+	key := fmt.Sprintf("%g|%s", size, tex)
+	v, ok := c.math.Load(key)
+	if !ok {
+		var res mathResult
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					res.err = fmt.Errorf("TeX failed: %v", r)
+				}
+			}()
+			p, err := canvas.ParseLaTeX("$" + texCompat(tex) + "$")
+			if err != nil {
+				res.err = err
+				return
+			}
+			k := size / (10 * mmPerPt) // the engine sets text at 10pt, in millimetres
+			b := p.Bounds()
+			p = p.TransformFunc(func(x, y float64) (float64, float64) { return (x - b.X0) * k, (b.Y1 - y) * k })
+			res.d, res.w, res.h = p.ToSVG(), (b.X1-b.X0)*k, (b.Y1-b.Y0)*k
+		}()
+		v, _ = c.math.LoadOrStore(key, res)
+	}
+	r := v.(mathResult)
+	if r.err != nil {
+		return "", 0, 0, r.err
+	}
+	return r.d, r.w, r.h, nil
+}
+
+// texCompat maps common LaTeX commands to plain TeX ones the engine knows.
+func texCompat(s string) string {
+	return strings.NewReplacer(
+		`\mathrm{`, `{\rm `, `\text{`, `{\rm `, `\mathbf{`, `{\bf `, `\mathit{`, `{\it `,
+		`\log`, `{\rm log}`, `\ln`, `{\rm ln}`, `\max`, `{\rm max}`, `\min`, `{\rm min}`,
+	).Replace(s)
 }

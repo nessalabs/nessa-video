@@ -77,6 +77,7 @@ func (s *Stage) Options() layout.Options {
 			"label":   t("mono", "size-label", 13),
 			"code":    t("mono", "size-code", 15),
 			"metric":  t("sans500", "size-metric", 40),
+			"math":    t("sans400", "size-math", 30),
 			"box":     t("sans500", "size-box", 15),
 			"caption": t("sans400", "size-caption", 20),
 		},
@@ -316,9 +317,20 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		textColor = p.s.col(v.Value)
 	}
 
-	if placed && e.Edge == nil && e.Code != nil {
+	switch {
+	case !placed || e.Edge != nil:
+	case e.Code != nil:
 		p.codePanel(e, r, lk, ap)
-	} else if placed && e.Edge == nil {
+	case e.Array != nil:
+		p.arrayBlock(e, r, lk, ap)
+	case e.Chart != nil:
+		p.chartBlock(e, r, lk, ap)
+	case e.Timeline != nil:
+		p.timelineBlock(e, r, lk, ap)
+	case kind == "math":
+		p.mathBlock(e, r, textColor, ap)
+	}
+	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && kind != "math" {
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
 			p.shape(e, r, lk, ap)
@@ -336,10 +348,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 			}
 		case "terminal":
 			p.terminal(e, r, lk, ap)
-		case "diff", "array", "chart", "timeline", "mermaid", "math":
+		case "diff", "array", "chart", "timeline":
+			// a block whose data could not be read; reel check reports why
 			p.stroke(rr(r, 10), p.s.col("line-0"), true)
-			t := p.opt.Type["label"]
-			p.text(kind+" · drawn in a later milestone", r.CX(), r.CY()+4, t, p.s.col("ink-dim"), render.Middle)
 		}
 		if !c.IsBuiltinKind(kind) && kind != "scene" && (state == "focus" || state == "select" || state == "trace") {
 			// a component instance with a state draws a frame around itself
@@ -514,6 +525,9 @@ func (p *painter) route(sc *c.Scene, e *c.Element) [][2]float64 {
 		return nil
 	}
 	const gap = 8.0
+	if pts := p.detour(fromEls[0], toEls[0], a, b); pts != nil {
+		return pts
+	}
 	top, bot := math.Max(a.Y, b.Y), math.Min(a.Bottom(), b.Bottom())
 	left, right := math.Max(a.X, b.X), math.Min(a.Right(), b.Right())
 	switch {
@@ -768,4 +782,60 @@ func (p *painter) codePanel(e *c.Element, r layout.Rect, lk look, ap motion.Appe
 		}
 	}
 	p.opacity = opacity
+}
+
+// detour routes a connector around siblings that sit between its ends, so a
+// link that skips ranks goes over the boxes instead of through them.
+// It returns nil when the direct route is clear.
+func (p *painter) detour(ea, eb *c.Element, a, b layout.Rect) [][2]float64 {
+	parent := ea.ParentElement()
+	if parent == nil || parent != eb.ParentElement() {
+		return nil
+	}
+	const gap, lift = 8.0, 30.0
+	horizontal := math.Max(a.Y, b.Y) < math.Min(a.Bottom(), b.Bottom())
+	vertical := math.Max(a.X, b.X) < math.Min(a.Right(), b.Right())
+	if !horizontal && !vertical {
+		return nil
+	}
+	var blockers []layout.Rect
+	for _, sib := range parent.Children {
+		if sib == ea || sib == eb || sib.Edge != nil {
+			continue
+		}
+		r, ok := p.lay.Boxes[sib]
+		if !ok || r.W == 0 {
+			continue
+		}
+		if horizontal {
+			y := (math.Max(a.Y, b.Y) + math.Min(a.Bottom(), b.Bottom())) / 2
+			lo, hi := math.Min(a.Right(), b.Right()), math.Max(a.X, b.X)
+			if r.X < hi && r.Right() > lo && y > r.Y && y < r.Bottom() {
+				blockers = append(blockers, r)
+			}
+		} else {
+			x := (math.Max(a.X, b.X) + math.Min(a.Right(), b.Right())) / 2
+			lo, hi := math.Min(a.Bottom(), b.Bottom()), math.Max(a.Y, b.Y)
+			if r.Y < hi && r.Bottom() > lo && x > r.X && x < r.Right() {
+				blockers = append(blockers, r)
+			}
+		}
+	}
+	if len(blockers) == 0 {
+		return nil
+	}
+	if horizontal {
+		y := math.Min(a.Y, b.Y)
+		for _, r := range blockers {
+			y = math.Min(y, r.Y)
+		}
+		y -= lift
+		return [][2]float64{{a.CX(), a.Y - gap}, {a.CX(), y}, {b.CX(), y}, {b.CX(), b.Y - gap}}
+	}
+	x := math.Max(a.Right(), b.Right())
+	for _, r := range blockers {
+		x = math.Max(x, r.Right())
+	}
+	x += lift
+	return [][2]float64{{a.Right() + gap, a.CY()}, {x, a.CY()}, {x, b.CY()}, {b.Right() + gap, b.CY()}}
 }

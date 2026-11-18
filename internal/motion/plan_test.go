@@ -166,3 +166,63 @@ scene s
 		t.Fatalf("end focus = %v -> %v at %v", from, to, mix)
 	}
 }
+
+func TestArrayAndDiagramSteps(t *testing.T) {
+	p := plan(t, `video "t"
+scene s
+  array #a 5 2 9 ptr="lo=0"
+  mermaid #f
+    flowchart LR
+      A --> B --> C
+  timeline #tl
+    x | 0-10 a
+  ptr #a lo=2
+  swap #a 0 2
+  mark #a cells=1
+  walk #f A B C
+  play #tl
+`)
+	sp := p.Scenes[0]
+	a := el(t, sp.Scene, "#a")
+	end := sp.End()
+	if ps := end.Pointers(a); len(ps) != 1 || ps[0].Pos != 2 {
+		t.Errorf("pointers at end = %+v", ps)
+	}
+	if sl := end.Slots(a); sl[0] != 2 || sl[2] != 0 || sl[1] != 1 {
+		t.Errorf("slots at end = %v", sl)
+	}
+	sw := sp.swaps[a][0]
+	if sl := sp.At(sw.Start + sw.Dur/2).Slots(a); sl[0] <= 0 || sl[0] >= 2 {
+		t.Errorf("slot mid-swap = %v", sl)
+	}
+	if _, to, _ := end.Cells(a); len(to) != 1 || to[0] != 1 {
+		t.Errorf("marked cells = %v", to)
+	}
+	for _, id := range []string{"#f/A", "#f/B", "#f/C"} {
+		if ap := end.Look(el(t, sp.Scene, id)); ap.State != "focus" {
+			t.Errorf("%s after walk = %s", id, ap.State)
+		}
+	}
+	links := 0
+	for _, e := range c.Select(sp.Scene.Root, mustSel(t, "#f edge")) {
+		if end.Look(e).State == "focus" {
+			links++
+		}
+	}
+	if links != 2 {
+		t.Errorf("walked links = %d", links)
+	}
+	tl := el(t, sp.Scene, "#tl")
+	if pos, ok := end.Playhead(tl); !ok || pos != 1 {
+		t.Errorf("playhead at end = %v %v", pos, ok)
+	}
+}
+
+func mustSel(t *testing.T, s string) *selector.Selector {
+	t.Helper()
+	sel, err := selector.ParseSelector(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sel
+}
