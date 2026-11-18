@@ -5,21 +5,26 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image/png"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"reel/internal/app"
-	c "reel/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/app"
+	c "github.com/nessalabs/nessa-video/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/render/canvas"
 )
 
 const usage = `reel turns .reel scripts into explainer videos.
 
 Usage:
   reel check [--json] [--explain SELECTOR] FILE
+  reel still [--scene NAME] [-o PATH] FILE
   reel ref
 
 Commands:
   check   Parse and resolve a script; report problems with line numbers.
+  still   Render how each scene looks once its steps have run, as PNG.
   ref     Print the built-in kinds, steps and properties.
 `
 
@@ -31,6 +36,8 @@ func main() {
 	switch os.Args[1] {
 	case "check":
 		os.Exit(check(os.Args[2:]))
+	case "still":
+		os.Exit(still(os.Args[2:]))
 	case "ref":
 		ref()
 	case "-h", "--help", "help":
@@ -110,4 +117,57 @@ func printJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(v)
+}
+
+func still(args []string) int {
+	fs := flag.NewFlagSet("still", flag.ExitOnError)
+	scene := fs.String("scene", "", "render only this scene")
+	out := fs.String("o", ".", "output directory, or a .png file with --scene")
+	fs.Parse(args)
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: reel still [--scene NAME] [-o PATH] FILE")
+		return 2
+	}
+	file := fs.Arg(0)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 2
+	}
+	cv, err := canvas.New()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 1
+	}
+	stills, rep, err := app.Stills{Raster: cv, Measure: cv}.Render(string(src), *scene)
+	if err != nil {
+		if !rep.OK {
+			fmt.Fprint(os.Stderr, rep.FormatText(file))
+		}
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 1
+	}
+	stem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	for _, st := range stills {
+		path := filepath.Join(*out, fmt.Sprintf("%s-%d-%s.png", stem, st.Index, st.Scene))
+		if *scene != "" && strings.HasSuffix(*out, ".png") {
+			path = *out
+		} else if err := os.MkdirAll(*out, 0o755); err != nil {
+			fmt.Fprintln(os.Stderr, "reel:", err)
+			return 1
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "reel:", err)
+			return 1
+		}
+		if err := png.Encode(f, st.Image); err != nil {
+			f.Close()
+			fmt.Fprintln(os.Stderr, "reel:", err)
+			return 1
+		}
+		f.Close()
+		fmt.Println(path)
+	}
+	return 0
 }

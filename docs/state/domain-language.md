@@ -15,6 +15,7 @@ diagramLinks:
   Resolve: check-a-script
   Theme: theme-packs
   Render: render-pipeline
+  Stage: draw-a-still
 ---
 
 # Shared words and areas
@@ -32,7 +33,14 @@ flowchart RL
     Composition --> Kernel[Shared kernel: positions, problems, selectors]
     Script --> Kernel
     Render[Render] --> Kernel
+    Layout[Layout] --> Composition
+    Motion[Motion] --> Composition
+    Stage[Stage] --> Layout
+    Stage --> Motion
+    Stage --> Render
+    Stage --> Theme
     App[Use cases] --> Resolve
+    App --> Stage
     CLI[reel command] --> App
 ```
 
@@ -50,12 +58,15 @@ display list, so a different drawing library is a new adapter, not a rewrite.
 | Composition | `internal/composition` | Video, scenes, elements, steps, style rules, the cascade |
 | Theme | `internal/theme` | Theme packs: tokens, default rules, components |
 | Resolve | `internal/resolve` | Turning script lines into composition, with checks |
+| Layout | `internal/layout` | Sizes and positions: rows, columns, grids, layers, places |
+| Motion | `internal/motion` | What steps do. Today only the end state of a scene |
+| Stage | `internal/stage` | How each kind and state looks, painted into a display list |
 | Render | `internal/render` | Display lists and the rasterizer port and adapters |
-| Use cases | `internal/app` | Check and explain today; still and render later |
+| Use cases | `internal/app` | Check, explain and still today; render later |
 | Interface | `cmd/reel` | The command line |
 
-Motion and Encode will be their own areas between Composition and Render, and
-after Render.
+Encode will be its own area after Render. Stage is the only area that knows
+both the composition model and the display list.
 
 ## Words
 
@@ -74,6 +85,8 @@ after Render.
 | Rule | A selector with property values, from a theme or a style block |
 | Cascade | The fixed order that decides which value wins when rules disagree |
 | Theme pack | Tokens, default rules and components that set the look |
+| Design units | The coordinate space layout uses: the frame's short side is 720 units |
+| End state | How a scene looks after all of its steps have run |
 | Display list | The drawing operations for one frame, independent of any library |
 | Rasterizer | A port that turns a display list into pixels |
 | Diagnostic | A problem with a position, severity and fix hint |

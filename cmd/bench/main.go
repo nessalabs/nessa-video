@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"reel/internal/render"
-	"reel/internal/render/canvas"
-	"reel/internal/render/resvg"
+	"github.com/nessalabs/nessa-video/internal/render"
+	"github.com/nessalabs/nessa-video/internal/render/canvas"
+	"github.com/nessalabs/nessa-video/internal/render/resvg"
 )
 
 func main() {
@@ -32,7 +32,7 @@ func main() {
 
 	var backends []render.Rasterizer
 	if *which == "all" || *which == "canvas" {
-		b, err := canvas.New(*fonts)
+		b, err := canvas.New()
 		must(err)
 		backends = append(backends, b)
 	}

@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	c "reel/internal/composition"
-	"reel/internal/diag"
-	"reel/internal/script"
-	"reel/internal/selector"
-	"reel/internal/theme"
+	c "github.com/nessalabs/nessa-video/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/script"
+	"github.com/nessalabs/nessa-video/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
 // Result is a resolved video and every problem found on the way.
@@ -55,15 +55,19 @@ func Script(src string) Result {
 	}
 	r.loadTheme(th)
 
-	for _, n := range nodes {
+	for _, n := range nodes { // definitions first, so style rules can name them
 		switch n.Kind {
-		case "video":
-		case "style":
-			r.style(n, c.LayerScriptRule)
 		case "define":
 			r.define(n, false)
 		case "sequence":
 			r.sequence(n)
+		}
+	}
+	for _, n := range nodes {
+		switch n.Kind {
+		case "video", "define", "sequence":
+		case "style":
+			r.style(n, c.LayerScriptRule)
 		case "import":
 			r.diags.Warnf(n.Pos, "inline the definitions for now", "import is not supported yet")
 		case "scene":
@@ -174,12 +178,14 @@ func (r *resolver) loadTheme(th *theme.Theme) {
 		r.diags = append(r.diags, x)
 	}
 	r.inTheme = true
-	for _, n := range nodes {
-		switch n.Kind {
-		case "style":
-			r.style(n, c.LayerThemeDefault)
-		case "define":
+	for _, n := range nodes { // components first, so style rules can name them
+		if n.Kind == "define" {
 			r.define(n, true)
+		}
+	}
+	for _, n := range nodes {
+		if n.Kind == "style" {
+			r.style(n, c.LayerThemeDefault)
 		}
 	}
 	r.inTheme = false

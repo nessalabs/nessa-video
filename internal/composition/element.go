@@ -4,8 +4,8 @@
 package composition
 
 import (
-	"reel/internal/diag"
-	"reel/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/selector"
 )
 
 // Element is one thing in a scene: a primitive, a component instance, a

@@ -10,7 +10,8 @@ import (
 	"github.com/tdewolff/canvas"
 	"github.com/tdewolff/canvas/renderers/rasterizer"
 
-	"reel/internal/render"
+	"github.com/nessalabs/nessa-video/assets"
+	"github.com/nessalabs/nessa-video/internal/render"
 )
 
 // Canvas is the pure-Go backend built on github.com/tdewolff/canvas.
@@ -22,27 +23,32 @@ type Canvas struct {
 
 const mmPerPt = 25.4 / 72
 
-func New(fontDir string) (*Canvas, error) {
+// New loads the embedded fonts.
+func New() (*Canvas, error) {
 	c := &Canvas{fonts: map[string]*canvas.FontFamily{}}
-	load := func(key, file string) error {
-		f := canvas.NewFontFamily(key)
-		if err := f.LoadFontFile(fontDir+"/"+file, canvas.FontRegular); err != nil {
-			return err
-		}
-		c.fonts[key] = f
-		return nil
-	}
-	for k, f := range map[string]string{
-		"sans400": "inter-latin-400-normal.ttf",
-		"sans500": "inter-latin-500-normal.ttf",
-		"sans600": "inter-latin-600-normal.ttf",
-		"mono":    "jetbrains-mono-latin-400-normal.ttf",
+	for k, data := range map[string][]byte{
+		"sans400": assets.Inter400,
+		"sans500": assets.Inter500,
+		"sans600": assets.Inter600,
+		"mono":    assets.Mono400,
 	} {
-		if err := load(k, f); err != nil {
+		f := canvas.NewFontFamily(k)
+		if err := f.LoadFont(data, 0, canvas.FontRegular); err != nil {
 			return nil, err
 		}
+		c.fonts[k] = f
 	}
 	return c, nil
+}
+
+// Measure returns the advance width of s in pixels at the given size.
+// It implements layout.Measurer.
+func (c *Canvas) Measure(s, font string, size float64) float64 {
+	f, ok := c.fonts[font]
+	if !ok {
+		f = c.fonts["sans400"]
+	}
+	return f.Face(size / mmPerPt).TextWidth(s)
 }
 
 func (c *Canvas) Name() string { return "canvas (pure Go)" }

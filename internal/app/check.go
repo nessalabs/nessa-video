@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	c "reel/internal/composition"
-	"reel/internal/diag"
-	"reel/internal/resolve"
-	"reel/internal/selector"
+	c "github.com/nessalabs/nessa-video/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/resolve"
+	"github.com/nessalabs/nessa-video/internal/selector"
 )
 
 // CheckReport is the result of checking a script.

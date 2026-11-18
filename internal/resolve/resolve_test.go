@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	c "reel/internal/composition"
-	"reel/internal/selector"
+	c "github.com/nessalabs/nessa-video/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/selector"
 )
 
 func mustSel(t *testing.T, s string) *selector.Selector {
@@ -184,5 +184,12 @@ scene s
 	}
 	if n := len(c.Select(root, mustSel(t, "#billing/host/procs > process"))); n != 2 {
 		t.Fatalf("slotted processes = %d", n)
+	}
+}
+
+func TestStyleCanNameLaterDefinitions(t *testing.T) {
+	res := Script("video \"t\"\nstyle\n  widget state=dim\ndefine widget\n  box\nscene s\n  widget #w\n")
+	if len(res.Diags) > 0 {
+		t.Fatalf("diags: %v", res.Diags)
 	}
 }

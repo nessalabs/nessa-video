@@ -3,8 +3,8 @@ package composition
 import (
 	"time"
 
-	"reel/internal/diag"
-	"reel/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/selector"
 )
 
 // Video is the aggregate root: one script, its scenes and its style rules.

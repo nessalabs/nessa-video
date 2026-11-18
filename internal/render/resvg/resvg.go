@@ -24,7 +24,7 @@ import (
 
 	"github.com/tdewolff/canvas"
 
-	"reel/internal/render"
+	"github.com/nessalabs/nessa-video/internal/render"
 )
 
 // Resvg serializes the display list to SVG and rasterizes it with resvg (Rust) via cgo.

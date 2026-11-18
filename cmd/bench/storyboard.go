@@ -8,7 +8,7 @@ import (
 	"image/color"
 	"math"
 
-	. "reel/internal/render"
+	. "github.com/nessalabs/nessa-video/internal/render"
 )
 
 const (

@@ -1,4 +1,4 @@
-module reel
+module github.com/nessalabs/nessa-video
 
 go 1.27.4
 

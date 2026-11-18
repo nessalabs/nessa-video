@@ -14,11 +14,15 @@ style
   label      font=mono color=ink-3
   code       font=mono
   terminal   font=mono
+  process/name  font=sans-500 size=16 color=ink
+  process/note  color=ink-3
+
+# Component parts are drawn by kind; tokens below are read by the stage.
 
 define laptop
-  layer
+  col #device gap=6
     box #screen w=200 h=132 r=8
-    box #base w=256 h=16
+    box #base w=256 h=14 r=3
   label #label "{text}"
 
 define phone
@@ -26,7 +30,7 @@ define phone
   label #label "{text}"
 
 define server units=3
-  col #units
+  col #units gap=0
     repeat units
       box #unit{i} w=160 h=60
   col #procs gap=8

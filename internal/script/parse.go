@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"strings"
 
-	"reel/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/diag"
 )
 
 // Pos is a 1-based source position.

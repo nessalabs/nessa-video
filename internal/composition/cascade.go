@@ -1,8 +1,8 @@
 package composition
 
 import (
-	"reel/internal/diag"
-	"reel/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/selector"
 )
 
 // Layer orders where a property value came from. Higher layers win.

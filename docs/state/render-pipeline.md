@@ -3,7 +3,7 @@ id: render-pipeline
 title: Render frames
 kind: flow
 status: mixed
-summary: A display list per frame goes to a rasterizer and then to an encoder. Rasterizing works; script input and the built-in encoder do not yet.
+summary: A display list per frame goes to a rasterizer and then to an encoder. Stills from scripts and the benchmark work; the built-in encoder does not yet.
 parent: reel
 sources:
   - internal/render/frame.go
@@ -21,10 +21,10 @@ with colours and transforms. A rasterizer turns it into pixels and an encoder
 turns the pixels into video. Frames do not depend on each other, so they are
 drawn in parallel and written in order.
 
-Status: rasterizing is implemented and benchmarked. The display lists come
-from a hand-built storyboard in `cmd/bench`, not from scripts yet. Encoding in
-the benchmark goes through ffmpeg only to measure it; the shipped binary will
-link x264 instead.
+Status: rasterizing is implemented and benchmarked. [Drawing a still](draw-a-still.md)
+builds display lists from scripts; the benchmark in `cmd/bench` uses a
+hand-built storyboard. Encoding in the benchmark goes through ffmpeg only to
+measure it; the shipped binary will link x264 instead.
 
 ```mermaid
 sequenceDiagram
@@ -56,6 +56,6 @@ its Rust library built from `resvgshim`.
 
 ## Known gaps
 
-The bundled Latin font subset has no block characters, so a terminal cursor
+Fonts are embedded in the binary. The bundled Latin font subset has no block characters, so a terminal cursor
 must be drawn as a shape. Maths rendering through the built-in TeX engine
 drops some glyphs and lacks LaTeX-only commands such as `\mathrm`.
