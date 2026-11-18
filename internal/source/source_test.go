@@ -76,3 +76,22 @@ func TestSelection(t *testing.T) {
 		}
 	}
 }
+
+func TestWindow(t *testing.T) {
+	var lines []Line
+	for n := 1; n <= 40; n++ {
+		lines = append(lines, Line{Kind: Context, Old: n, New: n})
+	}
+	sel, _ := ParseSelection("20")
+	got := Window(lines, sel, 2, 16)
+	// 2 lines either side of 20, with gaps for 1..17 and 23..40
+	if len(got) != 7 || got[0].Kind != Gap || got[0].Old != 17 || got[1].New != 18 || got[5].New != 22 || got[6].Old != 18 {
+		t.Fatalf("window = %+v", got)
+	}
+	if short := Window(lines[:10], sel, 2, 16); len(short) != 10 {
+		t.Error("short blocks are not folded")
+	}
+	if none := Window(lines, nil, 2, 16); len(none) != 40 {
+		t.Error("nothing selected: nothing folded")
+	}
+}

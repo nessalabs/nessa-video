@@ -62,6 +62,10 @@ type CodeBlock struct {
 	Diff   bool
 	Lines  []source.Line
 	Focus  source.Selection // lines to emphasise; nil means all
+
+	Windowed bool // long blocks are folded around focused lines once
+	Added    int  // lines added and removed in the whole hunk, before folding
+	Removed  int
 }
 
 // Edge describes a connector between two sets of elements.

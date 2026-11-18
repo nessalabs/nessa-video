@@ -35,7 +35,9 @@ func (sp *ScenePlan) End() Moment {
 	if sp.closeAt > 0 {
 		t = sp.closeAt
 	}
-	return Moment{plan: sp, T: t - 1e-6}
+	// stop short of the caption's fade at the scene's end, but not before
+	// the last step has finished
+	return Moment{plan: sp, T: math.Min(sp.Dur, math.Max(sp.stepsEnd, t-0.35))}
 }
 
 func applyMode(mode string, p float64, ap *Appearance) {

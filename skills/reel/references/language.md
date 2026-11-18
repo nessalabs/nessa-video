@@ -37,21 +37,30 @@ the line above. `# ` starts a comment. In quoted text, `\"` is a quote and
 | Kind | Notes |
 | --- | --- |
 | `box`, `card`, `circle`, `decision`, `store`, `stack` | shapes; text inside with `"…"` |
-| `title`, `p`, `label`, `metric` | text; `title "a ==b=="` brightens b |
+| `title`, `p`, `label` | text; `title "a ==b=="` brightens b |
+| `metric "1024" label="records kept" note="GRANT_LOG_RETAINED, share_grants.rs"` | a big number with a caption and where it comes from; `focus` underlines it |
 | `row`, `col`, `grid cols=N`, `layer`, `place` | layout: `gap`, `align`, `justify`, `pad`, `w`, `h`, `x`, `y` |
 | `laptop`, `phone`, `server`, `process`, `db`, `queue` | theme components; parts like `#api/unit1`, `#api/procs` |
 | `a -> b "label"` | connector; also `-|`, `~>`, `..>` (dashed), `<->`, `--` |
 | `code LANG` | indented lines or `file=PATH lines=11..15`; `focus=3..4` |
 | `diff` | indented `git diff` or `file=PR.diff path=FILE hunk=N`; `focus=+12..+14` (new) or `-12` (old) |
+
+Line numbers in `focus=` and `mark lines=` are the file's own numbers, the ones
+`reel still` shows in the gutter. A long block is folded to the lines around
+its focus and every line a `mark` in the scene names (`context=3` lines either
+side by default), so it stays readable; folded runs show as "N lines".
+`reel check` warns when a focus names lines the block does not show.
 | `terminal` | indented lines; `$ ` starts a command |
 | `array 1 3 4` | `ptr="lo=0 hi=2"` (0-based) |
 | `chart bar` / `chart line` | indented CSV: header row, then `label, v1, v2` |
 | `timeline unit=ms` | indented lanes: `label | 0-18 wait | *18-22 done` (`*` = bright) |
-| `mermaid` | indented `flowchart LR`/`TD` (nodes become parts `#flow/ID`) or `sequenceDiagram` |
+| `mermaid` | indented `flowchart LR`/`TD` (nodes become parts `#flow/ID`) or `sequenceDiagram` with `participant … as …`, `->>`, `-->>` (reply), `-x`, `Note over A: …`, `alt`/`else`/`opt`/`loop`/`par` … `end`, `autonumber` |
 | `math "TeX"` | formula |
 
 Elements stay on screen into the next scene unless the scene starts with
 `clear` (or `clear keep=#id`). Ids must be unique within what is on screen.
+
+`reel ref` lists every kind with the properties it takes.
 
 ## Steps
 

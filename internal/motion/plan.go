@@ -111,6 +111,7 @@ type ScenePlan struct {
 	endState map[*c.Element]string // by identity
 	endCam   *c.Element            // identity
 	closeAt  float64               // when exits for the next scene's clear begin; 0 if none
+	stepsEnd float64               // when the last step finishes
 }
 
 // Plan is the whole video's timeline.
@@ -422,6 +423,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			t = start + dur
 		}
 	}
+	sp.stepsEnd = t
 	sp.Dur = math.Max(t+tm.Hold+hold, captionNeed+0.5)
 	if sc.Duration > 0 {
 		sp.Dur = sc.Duration.Seconds()

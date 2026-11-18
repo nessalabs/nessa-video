@@ -117,6 +117,7 @@ func ScriptWith(src string, opt Options) Result {
 
 	v.Style()
 	for _, s := range v.Scenes {
+		r.windowCode(s)
 		r.validate(s)
 	}
 	return Result{Video: v, Diags: r.diags.Sorted()}
@@ -702,6 +703,14 @@ func (r *resolver) codeBlock(e *c.Element, n *script.Node) {
 			return
 		}
 		cb.Path, cb.Header, cb.Lines = fd.Path, fd.Hunks[hunk-1].Header, fd.Hunks[hunk-1].Lines
+		for _, l := range cb.Lines {
+			switch l.Kind {
+			case source.Added:
+				cb.Added++
+			case source.Removed:
+				cb.Removed++
+			}
+		}
 	} else {
 		from, to := 1, 0
 		if v, ok := n.Prop("lines"); ok {
@@ -729,11 +738,43 @@ func (r *resolver) codeBlock(e *c.Element, n *script.Node) {
 		} else {
 			cb.Focus = sel
 			if !anyLine(cb.Lines, sel) {
-				r.diags.Warnf(n.Pos, "line numbers are the file's own numbers", "focus %q matches no shown line", v)
+				r.diags.Warnf(n.Pos, "line numbers are the file's own numbers, shown in the gutter of `reel still`", "focus %q matches no shown line", v)
+			} else if missing := missingLines(cb.Lines, sel); missing != "" {
+				r.diags.Warnf(n.Pos, "line numbers are the file's own numbers, shown in the gutter of `reel still`", "focus %q includes %s, which this block does not show", v, missing)
 			}
 		}
 	}
 	e.Code = cb
+}
+
+// missingLines names line numbers a selection asks for that no shown line has.
+func missingLines(lines []source.Line, sel source.Selection) string {
+	var miss []string
+	for _, rg := range sel {
+		for n := rg.From; n <= rg.To; n++ {
+			found := false
+			for _, l := range lines {
+				if source.Selection([]source.Range{{Side: rg.Side, From: n, To: n}}).Has(l) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				side := ""
+				if rg.Side != 0 {
+					side = string(rg.Side)
+				}
+				miss = append(miss, side+strconv.Itoa(n))
+			}
+		}
+	}
+	switch len(miss) {
+	case 0:
+		return ""
+	case 1:
+		return "line " + miss[0]
+	}
+	return fmt.Sprintf("lines %s to %s (%d lines)", miss[0], miss[len(miss)-1], len(miss))
 }
 
 func anyLine(lines []source.Line, sel source.Selection) bool {
@@ -1096,6 +1137,46 @@ func (r *resolver) idHint(root *c.Element, src string) string {
 }
 
 // validate checks a styled scene: ids, targets, connector ends and values.
+// windowCode folds long code and diff blocks down to the lines around
+// their focus and every line a mark step in the scene points at, so they
+// stay readable instead of being scaled down. `lines` or `context=` control it.
+func (r *resolver) windowCode(s *c.Scene) {
+	keep := map[*c.CodeBlock]source.Selection{}
+	s.Root.Walk(func(e *c.Element) {
+		if e.Code != nil && e.Code.Focus != nil {
+			keep[e.Code] = append(keep[e.Code], e.Code.Focus...)
+		}
+	})
+	for _, st := range s.Steps {
+		v, ok := st.Lookup("lines")
+		if st.Verb != "mark" || !ok || st.Target == nil {
+			continue
+		}
+		sel, err := source.ParseSelection(v)
+		if err != nil {
+			continue
+		}
+		for _, e := range c.Select(s.Root, st.Target) {
+			if e.Code != nil {
+				keep[e.Code] = append(keep[e.Code], sel...)
+			}
+		}
+	}
+	s.Root.Walk(func(e *c.Element) {
+		if e.Code == nil || e.Code.Windowed || e.Carried {
+			return
+		}
+		context := 3
+		if v, ok := e.Computed["context"]; ok {
+			if n, err := strconv.Atoi(v.Value); err == nil && n >= 0 {
+				context = n
+			}
+		}
+		e.Code.Lines = source.Window(e.Code.Lines, keep[e.Code], context, 16)
+		e.Code.Windowed = true
+	})
+}
+
 func (r *resolver) validate(s *c.Scene) {
 	seen := map[string]*c.Element{}
 	s.Root.Walk(func(e *c.Element) {

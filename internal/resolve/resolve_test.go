@@ -459,3 +459,33 @@ func TestOrientationStyles(t *testing.T) {
 		t.Errorf("rules for the other orientation should still be checked: %v", r.Diags)
 	}
 }
+
+func TestLongDiffIsFoldedAroundFocusAndMarks(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("--- a/x.go\n+++ b/x.go\n@@ -1,40 +1,40 @@\n")
+	for i := 1; i <= 40; i++ {
+		fmt.Fprintf(&b, " line%d\n", i)
+	}
+	opt := Options{ReadFile: func(string) ([]byte, error) { return []byte(b.String()), nil }}
+	res := ScriptWith("video \"t\"\nscene s\n  diff #d file=x.diff focus=+5\n  mark #d lines=+30\n", opt)
+	if len(res.Diags) > 0 {
+		t.Fatal(res.Diags)
+	}
+	cb := c.Select(res.Video.Scenes[0].Root, mustSel(t, "#d"))[0].Code
+	shown := map[int]bool{}
+	gaps := 0
+	for _, l := range cb.Lines {
+		if l.Kind == 3 {
+			gaps++
+		} else {
+			shown[l.New] = true
+		}
+	}
+	if !shown[5] || !shown[30] || shown[15] || gaps != 3 {
+		t.Fatalf("folded lines: shown=%v gaps=%d", shown, gaps)
+	}
+	r := ScriptWith("video \"t\"\nscene s\n  diff file=x.diff focus=+39..+42\n", opt)
+	if !strings.Contains(fmt.Sprint(r.Diags), "lines +41 to +42") {
+		t.Errorf("partial focus should warn: %v", r.Diags)
+	}
+}

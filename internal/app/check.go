@@ -5,6 +5,7 @@ package app
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,29 +13,33 @@ import (
 
 	c "github.com/nessalabs/nessa-video/internal/composition"
 	"github.com/nessalabs/nessa-video/internal/diag"
+	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/resolve"
 	"github.com/nessalabs/nessa-video/internal/selector"
 )
 
 // CheckReport is the result of checking a script.
 type CheckReport struct {
-	OK     bool        `json:"ok"`
-	Title  string      `json:"title,omitempty"`
-	Size   string      `json:"size,omitempty"`
-	FPS    int         `json:"fps,omitempty"`
-	Theme  string      `json:"theme,omitempty"`
-	Scenes []SceneInfo `json:"scenes"`
-	Diags  diag.List   `json:"diagnostics"`
+	OK      bool        `json:"ok"`
+	Title   string      `json:"title,omitempty"`
+	Size    string      `json:"size,omitempty"`
+	FPS     int         `json:"fps,omitempty"`
+	Theme   string      `json:"theme,omitempty"`
+	Seconds float64     `json:"seconds"` // video length
+	Scenes  []SceneInfo `json:"scenes"`
+	Diags   diag.List   `json:"diagnostics"`
 
 	video *c.Video
 }
 
 // SceneInfo summarizes one scene.
 type SceneInfo struct {
-	Name     string `json:"name"`
-	Elements int    `json:"elements"`
-	Steps    int    `json:"steps"`
-	Duration string `json:"duration,omitempty"`
+	Name     string  `json:"name"`
+	Elements int     `json:"elements"`
+	Steps    int     `json:"steps"`
+	Duration string  `json:"duration,omitempty"` // as written in the script
+	Start    float64 `json:"start"`              // seconds into the video
+	Seconds  float64 `json:"seconds"`            // how long it plays
 }
 
 // Check resolves a script that reads no files.
@@ -61,13 +66,16 @@ func CheckIn(src, dir string) CheckReport {
 	if rep.Diags == nil {
 		rep.Diags = diag.List{}
 	}
-	for _, s := range v.Scenes {
+	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
+	rep.Seconds = round1(plan.Total)
+	for i, s := range v.Scenes {
 		n := 0
 		s.Root.Walk(func(*c.Element) { n++ })
 		info := SceneInfo{Name: s.Name, Elements: n - 1, Steps: len(s.Steps)}
 		if s.Duration > 0 {
 			info.Duration = s.Duration.String()
 		}
+		info.Start, info.Seconds = round1(plan.Scenes[i].Start), round1(plan.Scenes[i].Dur)
 		rep.Scenes = append(rep.Scenes, info)
 	}
 	return rep
@@ -126,6 +134,8 @@ func (r CheckReport) Explain(sel string) ([]Explained, error) {
 	return out, nil
 }
 
+func round1(f float64) float64 { return math.Round(f*10) / 10 }
+
 // FormatText renders diagnostics for people.
 func (r CheckReport) FormatText(file string) string {
 	var b strings.Builder
@@ -141,7 +151,10 @@ func (r CheckReport) FormatText(file string) string {
 		}
 	}
 	if r.OK {
-		fmt.Fprintf(&b, "ok: %d scenes, %s, %d fps, theme %s", len(r.Scenes), r.Size, r.FPS, r.Theme)
+		for _, s := range r.Scenes {
+			fmt.Fprintf(&b, "  %-16s %5.1fs  from %5.1fs\n", s.Name, s.Seconds, s.Start)
+		}
+		fmt.Fprintf(&b, "ok: %d scenes, %.1fs, %s, %d fps, theme %s", len(r.Scenes), r.Seconds, r.Size, r.FPS, r.Theme)
 		if warns > 0 {
 			fmt.Fprintf(&b, ", %d warnings", warns)
 		}

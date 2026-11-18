@@ -34,7 +34,10 @@ beat out or label it plainly as an example.
 - Prefer components (`laptop`, `server`, `process`, `db`, `queue`) and
   blocks (`diff`, `code`, `mermaid`, `timeline`) over hand-placed boxes.
 - Read diffs and source with `file=` rather than pasting them, so line
-  numbers match. Focus the lines you talk about with `focus=` or `mark`.
+  numbers match. Focus the lines you talk about with `focus=` or `mark`;
+  long hunks fold down to those lines automatically.
+- Show where a number comes from: `metric "1024" label="records kept"
+  note="GRANT_LOG_RETAINED in share_grants.rs"`.
 - Keep the theme's look. Change a token only when asked, in a `tokens` block.
 - For a phone video, set `size 1080x1920`. Check the stills; add a
   `style portrait` block only where the automatic fit is not good enough.
@@ -42,13 +45,14 @@ beat out or label it plainly as an example.
 ## Check, look, render
 
 ```sh
-reel check --json video.reel          # fix every error; warnings are hints
+reel check video.reel                 # problems, plus each scene's length
 reel still -o stills video.reel       # one PNG per scene, after its steps
 reel render -o video.mp4 video.reel
 ```
 
 Fix every error that `reel check` reports; each one names the line and
-suggests a fix. If you can view images, look at the stills before rendering
+suggests a fix. It also prints how long each scene plays, so you can aim for
+a length before rendering (`--json` has the same numbers). If you can view images, look at the stills before rendering
 and fix overlaps, empty scenes or text that runs off the frame.
 `reel check --explain '#id' video.reel` shows why an element looks the way
 it does. `reel ref` lists every kind, step and property.

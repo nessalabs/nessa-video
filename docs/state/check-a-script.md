@@ -99,3 +99,9 @@ property or a style rule that names no known kind, are printed but do not fail
 the check. The same report is available as JSON with `--json`.
 
 Repeated problems from elements carried into later scenes are reported once.
+
+## Scene lengths
+
+When the script is clean, `reel check` prints each scene's length and start
+time and the video's total, from the same plan `reel render` uses. `--json`
+includes them as `seconds` and `start` per scene.

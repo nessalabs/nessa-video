@@ -125,9 +125,14 @@ func ref() {
 	sec := func(title string, items []string) {
 		fmt.Printf("%s\n  %s\n\n", title, strings.Join(items, " "))
 	}
-	sec("Primitives", c.Primitives)
-	sec("Layouts", c.Layouts)
-	sec("Blocks", c.Blocks)
+	fmt.Println("Kinds and what they take (every element also takes state= enter= exit= hidden= w= h=)")
+	for _, group := range [][]string{c.Primitives, c.Layouts, c.Blocks} {
+		for _, k := range group {
+			fmt.Printf("  %-9s %s\n", k, c.KindProps[k])
+		}
+	}
+	fmt.Println("  laptop, phone, server, process, db, queue: theme components; run `reel theme export hairline` to see their parts")
+	fmt.Println()
 	sec("Steps", c.Verbs)
 	sec("States", c.States)
 	sec("Enter and exit modes", c.EnterModes)
@@ -170,13 +175,21 @@ func still(args []string) int {
 		return 1
 	}
 	stem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	dir := *out
+	asFile := strings.HasSuffix(strings.ToLower(*out), ".png")
+	if asFile {
+		// -o a.png writes a.png for one scene, or a-1-intro.png and so on beside it
+		dir = filepath.Dir(*out)
+		stem = strings.TrimSuffix(filepath.Base(*out), filepath.Ext(*out))
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 1
+	}
 	for _, st := range stills {
-		path := filepath.Join(*out, fmt.Sprintf("%s-%d-%s.png", stem, st.Index, st.Scene))
-		if *scene != "" && strings.HasSuffix(*out, ".png") {
+		path := filepath.Join(dir, fmt.Sprintf("%s-%d-%s.png", stem, st.Index, st.Scene))
+		if asFile && len(stills) == 1 {
 			path = *out
-		} else if err := os.MkdirAll(*out, 0o755); err != nil {
-			fmt.Fprintln(os.Stderr, "reel:", err)
-			return 1
 		}
 		f, err := os.Create(path)
 		if err != nil {

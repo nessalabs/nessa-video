@@ -417,6 +417,16 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		return SeqColumn * float64(len(el.Sequence.Participants)), SeqHead + rows*SeqRow + 28
 	case kind == "mermaid":
 		return e.graph(el, nil)
+	case kind == "metric":
+		w, h := e.text(el)
+		lab := e.opt.Type["label"]
+		for _, key := range []string{"label", "note"} {
+			if v := str(el, key, ""); v != "" {
+				w = max(w, e.m.Measure(Plain(v), lab.Font, lab.Size))
+				h += lab.Size * 1.9
+			}
+		}
+		return w, h
 	case textKinds[kind]:
 		return e.text(el)
 	case kind == "box" || kind == "decision":

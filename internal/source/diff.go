@@ -16,6 +16,7 @@ const (
 	Context LineKind = iota
 	Added
 	Removed
+	Gap // stands for lines left out; Old and New hold how many
 )
 
 // Line is one line of code. Old and New are 1-based line numbers on each
@@ -225,4 +226,44 @@ func ParseCells(s string) ([]int, error) {
 		}
 	}
 	return out, nil
+}
+
+// Window keeps the lines within context lines of a selected one and folds
+// each run of left-out lines into one Gap line. With nothing selected, or a
+// block already short, it returns lines unchanged.
+func Window(lines []Line, keep Selection, context, maxLines int) []Line {
+	if len(keep) == 0 || len(lines) <= maxLines {
+		return lines
+	}
+	near := make([]bool, len(lines))
+	any := false
+	for i, l := range lines {
+		if keep.Has(l) {
+			any = true
+			for j := max(0, i-context); j <= min(len(lines)-1, i+context); j++ {
+				near[j] = true
+			}
+		}
+	}
+	if !any {
+		return lines
+	}
+	var out []Line
+	skipped := 0
+	flush := func() {
+		if skipped > 0 {
+			out = append(out, Line{Kind: Gap, Old: skipped, New: skipped})
+			skipped = 0
+		}
+	}
+	for i, l := range lines {
+		if near[i] {
+			flush()
+			out = append(out, l)
+		} else {
+			skipped++
+		}
+	}
+	flush()
+	return out
 }

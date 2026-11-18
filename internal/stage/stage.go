@@ -341,7 +341,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
 			p.shape(e, r, lk, ap)
-		case "title", "p", "label", "metric", "code":
+		case "metric":
+			p.metric(e, r, lk, ap, state)
+		case "title", "p", "label", "code":
 			base, hi := textColor, p.s.col("hi")
 			if kind == "title" {
 				base = p.s.col("title-ink")
@@ -709,15 +711,7 @@ func (p *painter) codePanel(e *c.Element, r layout.Rect, lk look, ap motion.Appe
 	}
 	p.text(title, r.X+18, r.Y+25, lab, s.col("ink-3"), render.Start)
 	if cb.Diff {
-		adds, dels := 0, 0
-		for _, l := range cb.Lines {
-			switch l.Kind {
-			case source.Added:
-				adds++
-			case source.Removed:
-				dels++
-			}
-		}
+		adds, dels := cb.Added, cb.Removed
 		del := fmt.Sprintf("−%d", dels)
 		dw := s.Measure.Measure(del, lab.Font, lab.Size)
 		p.text(del, r.Right()-18, r.Y+25, lab, s.col("diff-del"), render.End)
@@ -740,10 +734,23 @@ func (p *painter) codePanel(e *c.Element, r layout.Rect, lk look, ap motion.Appe
 	for i, l := range cb.Lines {
 		y := r.Y + layout.CodeHeader + layout.CodePad + float64(i)*layout.CodeRow
 		f := inSel(from, l) + (inSel(to, l)-inSel(from, l))*mix
-		rowOp := opacity * ap.FillIn * (0.38 + 0.62*f)
+		rowOp := opacity * ap.FillIn * (0.55 + 0.45*f)
 		row := layout.Rect{X: r.X + 1, Y: y, W: r.W - 2, H: layout.CodeRow}
 
 		p.opacity = opacity * ap.FillIn
+		if l.Kind == source.Gap {
+			mid := y + layout.CodeRow/2
+			p.stroke(fmt.Sprintf("M%g %gH%g", r.X+layout.CodeGutter, mid, r.Right()-18), s.col("line-0"), true)
+			lab := p.opt.Type["label"]
+			txt := fmt.Sprintf(" %d lines ", l.Old)
+			if l.Old == 1 {
+				txt = " 1 line "
+			}
+			tw := s.Measure.Measure(txt, lab.Font, lab.Size)
+			p.fill(rr(layout.Rect{X: r.CX() - tw/2, Y: mid - 9, W: tw, H: 18}, 4), s.col("panel"))
+			p.text(txt, r.CX(), mid+4, lab, s.col("ink-dim"), render.Middle)
+			continue
+		}
 		switch l.Kind {
 		case source.Added:
 			p.fill(rr(row, 0), alpha(s.col("diff-add"), 0.10*(0.4+0.6*f)))
@@ -845,4 +852,48 @@ func (p *painter) detour(ea, eb *c.Element, a, b layout.Rect) [][2]float64 {
 	}
 	x += lift
 	return [][2]float64{{a.Right() + gap, a.CY()}, {x, a.CY()}, {x, b.CY()}, {b.Right() + gap, b.CY()}}
+}
+
+// metric draws a large number with an optional label and source note
+// under it. Focus brightens it and underlines it; dim greys it out.
+func (p *painter) metric(e *c.Element, r layout.Rect, lk look, ap motion.Appearance, state string) {
+	s := p.s
+	t := layout.TypeOf(e, p.opt)
+	opacity := p.opacity
+	p.draw = 1
+	p.opacity = opacity * ap.FillIn
+	num := s.col("ink-2")
+	switch state {
+	case "focus", "select", "active", "trace":
+		num = s.col("hi")
+	case "dim":
+		num = s.col("ink-dim")
+	}
+	lines := p.lay.Lines[e]
+	y := r.Y + t.Size
+	for i, ln := range lines {
+		p.runs(ln, r.CX(), y+t.Size*1.35*float64(i), t, num, s.col("hi"), render.Middle)
+	}
+	y += t.Size*1.35*float64(max(1, len(lines))-1) + 6
+	if state == "focus" {
+		w := s.Measure.Measure(layout.Plain(e.Text), t.Font, t.Size)
+		p.stroke(fmt.Sprintf("M%g %gH%g", r.CX()-w/2, y+4, r.CX()+w/2), s.col("line-2"), false)
+	}
+	lab := p.opt.Type["label"]
+	for _, key := range []string{"label", "note"} {
+		v, ok := e.Computed[key]
+		if !ok || v.Value == "" {
+			continue
+		}
+		y += lab.Size * 1.9
+		cl := s.col("ink-3")
+		if key == "note" {
+			cl = s.col("ink-dim")
+		}
+		if state == "dim" {
+			cl = s.col("ink-dim")
+		}
+		p.runs(v.Value, r.CX(), y, lab, cl, s.col("hi"), render.Middle)
+	}
+	p.opacity = opacity
 }
