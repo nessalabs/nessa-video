@@ -4,6 +4,7 @@ import (
 	"math"
 
 	c "github.com/nessalabs/nessa-video/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/source"
 )
 
 // Appearance is how one element looks at one moment.
@@ -156,4 +157,24 @@ func (m Moment) Packets() []Packet {
 		}
 	}
 	return out
+}
+
+// Focus returns the emphasised lines of a code or diff block: the selection
+// being left, the one being moved to (nil means all lines) and progress.
+func (m Moment) Focus(e *c.Element) (from, to source.Selection, mix float64) {
+	if e.Code != nil {
+		from, to = e.Code.Focus, e.Code.Focus
+	}
+	mix = 1
+	for _, mk := range m.plan.marks[e] {
+		if m.T < mk.Start {
+			break
+		}
+		from, to = to, mk.Lines
+		mix = 1
+		if mk.Dur > 0 {
+			mix = Ease((m.T - mk.Start) / mk.Dur)
+		}
+	}
+	return
 }

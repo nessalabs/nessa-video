@@ -10,11 +10,14 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 
 	c "github.com/nessalabs/nessa-video/internal/composition"
 	"github.com/nessalabs/nessa-video/internal/layout"
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
+	"github.com/nessalabs/nessa-video/internal/source"
+	"github.com/nessalabs/nessa-video/internal/source/syntax"
 	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
@@ -23,6 +26,8 @@ type Stage struct {
 	Theme   *theme.Theme
 	Measure layout.Measurer
 	W, H    int // frame size in pixels
+
+	tokens sync.Map // *composition.CodeBlock -> [][]syntax.Token
 }
 
 // Design returns the design-space size and the scale to frame pixels.
@@ -311,7 +316,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		textColor = p.s.col(v.Value)
 	}
 
-	if placed && e.Edge == nil {
+	if placed && e.Edge == nil && e.Code != nil {
+		p.codePanel(e, r, lk, ap)
+	} else if placed && e.Edge == nil {
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
 			p.shape(e, r, lk, ap)
@@ -633,4 +640,132 @@ func (p *painter) chevron(from, to [2]float64, cl color.NRGBA) {
 	const L, W = 7.0, 4.0
 	p.stroke(fmt.Sprintf("M%g %gL%g %gL%g %g",
 		to[0]-ux*L+px*W, to[1]-uy*L+py*W, to[0], to[1], to[0]-ux*L-px*W, to[1]-uy*L-py*W), cl, false)
+}
+
+func (s *Stage) highlighted(cb *c.CodeBlock) [][]syntax.Token {
+	if v, ok := s.tokens.Load(cb); ok {
+		return v.([][]syntax.Token)
+	}
+	lines := make([]string, len(cb.Lines))
+	for i, l := range cb.Lines {
+		lines[i] = layout.Untab(l.Text)
+	}
+	toks := syntax.Highlight(cb.Lang, lines)
+	s.tokens.Store(cb, toks)
+	return toks
+}
+
+func inSel(sel source.Selection, l source.Line) float64 {
+	if sel == nil || sel.Has(l) {
+		return 1
+	}
+	return 0
+}
+
+// codePanel draws a code or diff block: a header with the file path,
+// numbered rows, tinted added and removed lines, syntax colours, and dimmed
+// lines outside the focus.
+func (p *painter) codePanel(e *c.Element, r layout.Rect, lk look, ap motion.Appearance) {
+	cb := e.Code
+	s := p.s
+	opacity := p.opacity
+	p.opacity = opacity * ap.FillIn
+	p.draw = 1
+	p.fill(rr(r, 12), s.col("panel"))
+	p.opacity = opacity
+	p.draw = ap.Draw
+	p.stroke(rr(r, 12), lk.line, lk.dash)
+	p.draw = 1
+	p.opacity = opacity * ap.FillIn
+
+	lab := p.opt.Type["label"]
+	title := cb.Path
+	if title == "" {
+		title = strings.ToLower(cb.Lang)
+	}
+	if title == "" {
+		title = "code"
+	}
+	p.text(title, r.X+18, r.Y+25, lab, s.col("ink-3"), render.Start)
+	if cb.Diff {
+		adds, dels := 0, 0
+		for _, l := range cb.Lines {
+			switch l.Kind {
+			case source.Added:
+				adds++
+			case source.Removed:
+				dels++
+			}
+		}
+		del := fmt.Sprintf("−%d", dels)
+		dw := s.Measure.Measure(del, lab.Font, lab.Size)
+		p.text(del, r.Right()-18, r.Y+25, lab, s.col("diff-del"), render.End)
+		p.text(fmt.Sprintf("+%d", adds), r.Right()-26-dw, r.Y+25, lab, s.col("diff-add"), render.End)
+	} else if cb.Header != "" {
+		p.text(cb.Header, r.Right()-18, r.Y+25, lab, s.col("ink-dim"), render.End)
+	}
+	p.stroke(fmt.Sprintf("M%g %gH%g", r.X, r.Y+layout.CodeHeader, r.Right()), s.col("line-0"), false)
+
+	toks := s.highlighted(cb)
+	t := p.opt.Type["code"]
+	from, to, mix := p.mo.Focus(e)
+	total := 0
+	for _, l := range cb.Lines {
+		total += len([]rune(layout.Untab(l.Text)))
+	}
+	left := int(math.Round(ap.Reveal * float64(total)))
+	white := color.NRGBA{255, 255, 255, 255}
+
+	for i, l := range cb.Lines {
+		y := r.Y + layout.CodeHeader + layout.CodePad + float64(i)*layout.CodeRow
+		f := inSel(from, l) + (inSel(to, l)-inSel(from, l))*mix
+		rowOp := opacity * ap.FillIn * (0.38 + 0.62*f)
+		row := layout.Rect{X: r.X + 1, Y: y, W: r.W - 2, H: layout.CodeRow}
+
+		p.opacity = opacity * ap.FillIn
+		switch l.Kind {
+		case source.Added:
+			p.fill(rr(row, 0), alpha(s.col("diff-add"), 0.10*(0.4+0.6*f)))
+		case source.Removed:
+			p.fill(rr(row, 0), alpha(s.col("diff-del"), 0.10*(0.4+0.6*f)))
+		}
+		if to != nil && inSel(to, l) > 0 {
+			p.opacity = opacity * ap.FillIn * mix
+			p.fill(rr(layout.Rect{X: r.X + 1, Y: y, W: 2, H: layout.CodeRow}, 0), alpha(white, 0.85))
+		}
+
+		p.opacity = rowOp
+		n := l.New
+		if l.Kind == source.Removed {
+			n = l.Old
+		}
+		base := y + layout.CodeRow/2 + t.Size*0.36
+		p.text(strconv.Itoa(n), r.X+46, base, t, s.col("ink-dim"), render.End)
+		switch l.Kind {
+		case source.Added:
+			p.text("+", r.X+54, base, t, s.col("diff-add"), render.Start)
+		case source.Removed:
+			p.text("−", r.X+54, base, t, s.col("diff-del"), render.Start)
+		}
+		x := r.X + layout.CodeGutter
+		if i < len(toks) {
+			for _, tk := range toks[i] {
+				if left <= 0 {
+					break
+				}
+				txt := tk.Text
+				if rs := []rune(txt); len(rs) > left {
+					txt = string(rs[:left])
+				}
+				left -= len([]rune(txt))
+				cl := s.col("syntax-" + string(tk.Class))
+				if l.Kind == source.Removed {
+					cl = lerpColor(cl, s.col("ink-dim"), 0.45)
+				}
+				p.text(txt, x, base, t, cl, render.Start)
+				x += s.Measure.Measure(txt, t.Font, t.Size)
+			}
+		}
+	}
+	p.opacity = opacity
 }

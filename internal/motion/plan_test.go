@@ -147,3 +147,22 @@ scene s
 		t.Errorf("packets mid-send = %+v", pk)
 	}
 }
+
+func TestMark(t *testing.T) {
+	p := plan(t, `video "t"
+scene s
+  code #c go focus=1
+    a()
+    b()
+  mark #c lines=2
+`)
+	sp := p.Scenes[0]
+	e := el(t, sp.Scene, "#c")
+	if from, to, _ := sp.At(0).Focus(e); from == nil || to == nil || to[0].From != 1 {
+		t.Fatalf("initial focus = %v %v", from, to)
+	}
+	from, to, mix := sp.End().Focus(e)
+	if from[0].From != 1 || to[0].From != 2 || mix != 1 {
+		t.Fatalf("end focus = %v -> %v at %v", from, to, mix)
+	}
+}

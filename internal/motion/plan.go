@@ -11,6 +11,7 @@ import (
 	"time"
 
 	c "github.com/nessalabs/nessa-video/internal/composition"
+	"github.com/nessalabs/nessa-video/internal/source"
 )
 
 // Timings are durations in seconds, normally read from the theme.
@@ -63,6 +64,12 @@ type Caption struct {
 	Start float64
 }
 
+// Mark changes which lines of a code or diff block are emphasised.
+type Mark struct {
+	Lines      source.Selection
+	Start, Dur float64
+}
+
 // Send moves a packet along a connector.
 type Send struct {
 	Edge       *c.Element
@@ -83,6 +90,7 @@ type ScenePlan struct {
 	camInit  *c.Element
 	captions []Caption
 	sends    []Send
+	marks    map[*c.Element][]Mark
 	endState map[*c.Element]string // by identity
 	endCam   *c.Element            // identity
 	closeAt  float64               // when exits for the next scene's clear begin; 0 if none
@@ -154,6 +162,7 @@ func seconds(s string) (float64, bool) {
 func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	sp := &ScenePlan{Scene: sc, enter: map[*c.Element]Anim{}, exit: map[*c.Element]Anim{},
 		types: map[*c.Element]Anim{}, initial: map[*c.Element]string{}, changes: map[*c.Element][]StateChange{},
+		marks:    map[*c.Element][]Mark{},
 		endState: map[*c.Element]string{}}
 
 	// carried elements keep their state and the camera keeps its target
@@ -257,7 +266,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		}
 		dur := 0.0
 		switch st.Verb {
-		case "focus", "dim", "active", "select", "trace", "rest":
+		case "focus", "dim", "active", "select", "trace", "rest", "mark":
 			dur = tm.State
 		case "leave":
 			if len(targets) > 0 {
@@ -323,6 +332,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		case "type":
 			for _, e := range targets {
 				sp.types[e] = Anim{Mode: "type", Start: start, Dur: dur}
+			}
+		case "mark":
+			if v, ok := st.Lookup("lines"); ok {
+				if sel, err := source.ParseSelection(v); err == nil {
+					for _, e := range targets {
+						sp.marks[e] = append(sp.marks[e], Mark{Lines: sel, Start: start, Dur: dur})
+					}
+				}
 			}
 		case "say":
 			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start})

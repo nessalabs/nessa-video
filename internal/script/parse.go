@@ -59,7 +59,7 @@ func (n *Node) Prop(key string) (string, bool) {
 var EdgeOps = []string{"<->", "..>", "-->", "->", "-|", "~>", "--", ".."}
 
 // RawKinds take their indented body verbatim instead of parsing it.
-var RawKinds = map[string]bool{"terminal": true, "code": true, "math": true}
+var RawKinds = map[string]bool{"terminal": true, "code": true, "diff": true, "math": true}
 
 type line struct {
 	no, indent int

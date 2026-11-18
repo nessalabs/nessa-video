@@ -193,3 +193,60 @@ func TestStyleCanNameLaterDefinitions(t *testing.T) {
 		t.Fatalf("diags: %v", res.Diags)
 	}
 }
+
+func TestCodeAndDiffBlocks(t *testing.T) {
+	diffText := "--- a/x.go\n+++ b/x.go\n@@ -3,3 +3,3 @@ func f() {\n a := 1\n-b := 2\n+b := 3\n c := 4\n"
+	files := map[string]string{"change.diff": diffText, "main.py": "import os\n\ndef run():\n    return 1\n"}
+	opt := Options{ReadFile: func(p string) ([]byte, error) {
+		if s, ok := files[p]; ok {
+			return []byte(s), nil
+		}
+		return nil, os.ErrNotExist
+	}}
+	res := ScriptWith(`video "t"
+scene s
+  diff #d file=change.diff focus=+4
+  code #c file=main.py lines=3..4
+  code #i rust
+    fn main() {}
+`, opt)
+	if res.Diags.HasErrors() || len(res.Diags) > 0 {
+		t.Fatalf("diags: %v", res.Diags)
+	}
+	root := res.Video.Scenes[0].Root
+	d := c.Select(root, mustSel(t, "#d"))[0].Code
+	if !d.Diff || d.Path != "x.go" || len(d.Lines) != 4 || d.Lang != "Go" || d.Focus == nil {
+		t.Fatalf("diff block = %+v", d)
+	}
+	cb := c.Select(root, mustSel(t, "#c"))[0].Code
+	if len(cb.Lines) != 2 || cb.Lines[0].New != 3 || cb.Lang != "Python" {
+		t.Fatalf("code block = %+v", cb)
+	}
+	if ib := c.Select(root, mustSel(t, "#i"))[0].Code; ib.Lang != "Rust" || len(ib.Lines) != 1 {
+		t.Fatalf("inline block = %+v", ib)
+	}
+
+	bad := []struct{ src, want string }{
+		{"video \"t\"\nscene s\n  diff file=nope.diff", "cannot read nope.diff"},
+		{"video \"t\"\nscene s\n  diff\n    not a diff", "cannot read the diff"},
+		{"video \"t\"\nscene s\n  diff file=change.diff hunk=4", "bad hunk"},
+		{"video \"t\"\nscene s\n  diff file=change.diff path=y.go", `no file "y.go"`},
+		{"video \"t\"\nscene s\n  code go focus=3..1\n    x", "bad focus"},
+		{"video \"t\"\nscene s\n  code go focus=9\n    x", "matches no shown line"},
+		{"video \"t\"\nscene s\n  code", "code is empty"},
+		{"video \"t\"\nscene s\n  code #c go\n    x\n  mark #c", "mark needs lines="},
+	}
+	for _, b := range bad {
+		r := ScriptWith(b.src, opt)
+		var msgs []string
+		for _, d := range r.Diags {
+			msgs = append(msgs, d.Error())
+		}
+		if all := strings.Join(msgs, "\n"); !strings.Contains(all, b.want) {
+			t.Errorf("%q: want %q in:\n%s", b.src, b.want, all)
+		}
+	}
+	if r := Script("video \"t\"\nscene s\n  diff file=x.diff"); !strings.Contains(r.Diags[0].Error(), "cannot be read here") {
+		t.Errorf("without a file reader: %v", r.Diags)
+	}
+}

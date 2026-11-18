@@ -41,7 +41,7 @@ var Props = []string{
 	// motion
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
-	"file", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
+	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
 }
 
 // IsVerb reports whether k names a step.

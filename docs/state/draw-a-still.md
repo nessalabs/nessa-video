@@ -89,5 +89,6 @@ sizes from the theme's tokens.
 - Titles and captions show `==text==` brighter than the rest.
 - Connectors are straight when their ends line up and right-angled when they
   do not. Labels sit above a horizontal segment.
-- Diffs, arrays, charts, timelines, Mermaid and maths are drawn as labelled
-  dashed placeholders until their milestones.
+- Code and diff blocks are drawn as panels; see [Show code and diffs](show-code.md).
+- Arrays, charts, timelines, Mermaid and maths are drawn as labelled dashed
+  placeholders until their milestones.

@@ -70,7 +70,7 @@ func check(args []string) int {
 		fmt.Fprintln(os.Stderr, "reel:", err)
 		return 2
 	}
-	rep := app.Check(string(src))
+	rep := app.CheckIn(string(src), filepath.Dir(file))
 
 	if *explain != "" {
 		ex, err := rep.Explain(*explain)
@@ -146,7 +146,7 @@ func still(args []string) int {
 		fmt.Fprintln(os.Stderr, "reel:", err)
 		return 1
 	}
-	stills, rep, err := app.Stills{Raster: cv, Measure: cv}.Render(string(src), *scene)
+	stills, rep, err := app.Stills{Raster: cv, Measure: cv, Dir: filepath.Dir(file)}.Render(string(src), *scene)
 	if err != nil {
 		if !rep.OK {
 			fmt.Fprint(os.Stderr, rep.FormatText(file))
@@ -210,7 +210,7 @@ func renderCmd(args []string) int {
 		return 1
 	}
 	vs := app.Videos{
-		Raster: cv, Measure: cv, CRF: *crf, Preset: *preset,
+		Raster: cv, Measure: cv, CRF: *crf, Preset: *preset, Dir: filepath.Dir(file),
 		NewEncoder: func(w io.Writer, o encode.Options) (encode.Encoder, error) { return x264.New(w, o) },
 	}
 	last := -1

@@ -36,7 +36,7 @@ scene request
   is a connector.
 - `with` at the start runs a step together with the previous one.
 - `# ` starts a comment. `#name` without a space is an id.
-- `terminal`, `code` and `math` keep their indented lines exactly as written.
+- `terminal`, `code`, `diff` and `math` keep their indented lines exactly as written.
   So does a block between two ```` ``` ```` lines, such as Mermaid.
 
 ## Mistakes the parser reports

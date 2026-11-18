@@ -16,6 +16,8 @@ import (
 	"github.com/nessalabs/nessa-video/internal/diag"
 	"github.com/nessalabs/nessa-video/internal/script"
 	"github.com/nessalabs/nessa-video/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/source"
+	"github.com/nessalabs/nessa-video/internal/source/syntax"
 	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
@@ -25,9 +27,19 @@ type Result struct {
 	Diags diag.List
 }
 
-// Script resolves a .reel source.
-func Script(src string) Result {
-	r := &resolver{defs: map[string]*def{}, seqs: map[string]*seq{}}
+// Options configure resolution.
+type Options struct {
+	// ReadFile reads files named by `file=`, relative to the script.
+	// nil means files cannot be read, which is reported as an error.
+	ReadFile func(path string) ([]byte, error)
+}
+
+// Script resolves a .reel source that does not read files.
+func Script(src string) Result { return ScriptWith(src, Options{}) }
+
+// ScriptWith resolves a .reel source.
+func ScriptWith(src string, opt Options) Result {
+	r := &resolver{defs: map[string]*def{}, seqs: map[string]*seq{}, opt: opt}
 	nodes, pd := script.Parse(src)
 	r.diags = append(r.diags, pd...)
 	v := &c.Video{Width: 1920, Height: 1080, FPS: 30, Theme: "hairline"}
@@ -119,6 +131,7 @@ type resolver struct {
 	rules   []*c.Rule
 	depth   int
 	inTheme bool
+	opt     Options
 }
 
 func (r *resolver) video(v *c.Video, n *script.Node) {
@@ -388,6 +401,14 @@ func (r *resolver) step(n *script.Node) c.Step {
 		return st
 	case "clear":
 		return st
+	case "mark":
+		if v, ok := n.Prop("lines"); ok {
+			if _, err := source.ParseSelection(v); err != nil {
+				r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14", "bad lines %q: %v", v, err)
+			}
+		} else {
+			r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14", "mark needs lines=")
+		}
 	case "camera":
 		if len(args) == 0 {
 			r.diags.Errorf(n.Pos, "camera zoom #x, camera pan #x or camera reset", "camera needs an action")
@@ -451,10 +472,128 @@ func (r *resolver) element(parent *c.Element, n *script.Node, inst *instance) {
 		return
 	}
 	e := r.base(n, inst)
+	if n.Kind == "code" || n.Kind == "diff" {
+		r.codeBlock(e, n)
+	}
 	parent.Append(e)
 	for _, ch := range n.Children {
 		r.element(e, ch, inst)
 	}
+}
+
+// codeBlock reads a code or diff block from its body or a file.
+func (r *resolver) codeBlock(e *c.Element, n *script.Node) {
+	file, _ := n.Prop("file")
+	lang, _ := n.Prop("lang")
+	pathFilter, _ := n.Prop("path")
+	if len(e.Args) > 0 {
+		if n.Kind == "code" && lang == "" {
+			lang = e.Args[0]
+		} else if n.Kind == "diff" && pathFilter == "" {
+			pathFilter = e.Args[0]
+		}
+	}
+	text := strings.Join(n.Raw, "\n")
+	if file != "" {
+		if len(n.Raw) > 0 {
+			r.diags.Errorf(n.Pos, "use either file= or indented lines", "%s has both a file and inline lines", n.Kind)
+		}
+		if r.opt.ReadFile == nil {
+			r.diags.Errorf(n.Pos, "inline the lines instead", "files cannot be read here")
+			return
+		}
+		b, err := r.opt.ReadFile(file)
+		if err != nil {
+			r.diags.Errorf(n.Pos, "paths are relative to the script", "cannot read %s: %v", file, err)
+			return
+		}
+		text = string(b)
+	}
+	if strings.TrimSpace(text) == "" {
+		r.diags.Errorf(n.Pos, fmt.Sprintf("indent the %s under the line, or use file=", n.Kind), "%s is empty", n.Kind)
+		return
+	}
+	cb := &c.CodeBlock{Path: file}
+	if n.Kind == "diff" {
+		cb.Diff = true
+		files, err := source.ParseUnified(text)
+		if err != nil {
+			r.diags.Errorf(n.Pos, "paste `git diff` output or point file= at a .diff", "cannot read the diff: %v", err)
+			return
+		}
+		fd := files[0]
+		if pathFilter != "" {
+			found := false
+			var paths []string
+			for _, f := range files {
+				paths = append(paths, f.Path)
+				if f.Path == pathFilter || strings.HasSuffix(f.Path, "/"+pathFilter) {
+					fd, found = f, true
+					break
+				}
+			}
+			if !found {
+				r.diags.Errorf(n.Pos, "files in the diff: "+strings.Join(paths, ", "), "the diff has no file %q", pathFilter)
+				return
+			}
+		} else if len(files) > 1 {
+			r.diags.Warnf(n.Pos, "add path= to pick one", "the diff changes %d files; showing %s", len(files), fd.Path)
+		}
+		hunk := 1
+		if v, ok := n.Prop("hunk"); ok {
+			h, err := strconv.Atoi(v)
+			if err != nil || h < 1 || h > len(fd.Hunks) {
+				r.diags.Errorf(n.Pos, fmt.Sprintf("%s has %d hunks", fd.Path, len(fd.Hunks)), "bad hunk %q", v)
+				return
+			}
+			hunk = h
+		}
+		if len(fd.Hunks) == 0 {
+			r.diags.Errorf(n.Pos, "", "%s has no changed lines", fd.Path)
+			return
+		}
+		cb.Path, cb.Header, cb.Lines = fd.Path, fd.Hunks[hunk-1].Header, fd.Hunks[hunk-1].Lines
+	} else {
+		from, to := 1, 0
+		if v, ok := n.Prop("lines"); ok {
+			sel, err := source.ParseSelection(v)
+			if err != nil || len(sel) != 1 || sel[0].Side != 0 {
+				r.diags.Errorf(n.Pos, "e.g. lines=11..15", "bad lines %q", v)
+			} else {
+				from, to = sel[0].From, sel[0].To
+			}
+		}
+		cb.Lines = source.FileLines(text, from, to)
+		if len(cb.Lines) == 0 {
+			r.diags.Errorf(n.Pos, "", "lines %d..%d are outside the file", from, to)
+			return
+		}
+	}
+	cb.Lang = syntax.Lexer(lang, cb.Path)
+	if lang != "" && cb.Lang == "" {
+		r.diags.Warnf(n.Pos, "e.g. go, python, typescript, rust", "unknown language %q; showing plain text", lang)
+	}
+	if v, ok := n.Prop("focus"); ok {
+		sel, err := source.ParseSelection(v)
+		if err != nil {
+			r.diags.Errorf(n.Pos, "e.g. focus=12..14 or focus=+12..+14 for added lines", "bad focus %q: %v", v, err)
+		} else {
+			cb.Focus = sel
+			if !anyLine(cb.Lines, sel) {
+				r.diags.Warnf(n.Pos, "line numbers are the file's own numbers", "focus %q matches no shown line", v)
+			}
+		}
+	}
+	e.Code = cb
+}
+
+func anyLine(lines []source.Line, sel source.Selection) bool {
+	for _, l := range lines {
+		if sel.Has(l) {
+			return true
+		}
+	}
+	return false
 }
 
 // base creates an element with id, classes, text, args and inline props.

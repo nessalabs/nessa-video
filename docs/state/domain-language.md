@@ -18,6 +18,7 @@ diagramLinks:
   Stage: draw-a-still
   Motion: play-a-scene
   Encode: render-pipeline
+  Source: show-code
 ---
 
 # Shared words and areas
@@ -31,6 +32,8 @@ flowchart RL
     Resolve[Resolve] --> Script[Script]
     Resolve --> Composition[Composition]
     Resolve --> Theme[Theme]
+    Resolve --> Source[Source]
+    Composition --> Source
     Theme --> Composition
     Composition --> Kernel[Shared kernel: positions, problems, selectors]
     Script --> Kernel
@@ -60,6 +63,7 @@ display list, so a different drawing library is a new adapter, not a rewrite.
 | Shared kernel | `internal/diag`, `internal/selector` | Positions, problem reports, the selector language |
 | Composition | `internal/composition` | Video, scenes, elements, steps, style rules, the cascade |
 | Theme | `internal/theme` | Theme packs: tokens, default rules, components |
+| Source | `internal/source` | Diff parsing, numbered lines, line selections; `syntax` classes tokens |
 | Resolve | `internal/resolve` | Turning script lines into composition, with checks |
 | Layout | `internal/layout` | Sizes and positions: rows, columns, grids, layers, places |
 | Motion | `internal/motion` | The plan: when things enter, change, move and leave |
@@ -98,3 +102,6 @@ line, so they never import a drawing or video library directly.
 | Display list | The drawing operations for one frame, independent of any library |
 | Rasterizer | A port that turns a display list into pixels |
 | Diagnostic | A problem with a position, severity and fix hint |
+| Hunk | One `@@` section of a diff |
+| Focus | The lines of a code block shown at full strength |
+| Mark | A step that moves the focus to other lines |

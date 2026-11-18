@@ -16,6 +16,7 @@ import (
 type Stills struct {
 	Raster  render.Rasterizer
 	Measure layout.Measurer
+	Dir     string // where `file=` paths are read from; "" disables files
 }
 
 // Still is one rendered scene.
@@ -28,7 +29,7 @@ type Still struct {
 // Render checks src and renders every scene, or only the named one.
 // It refuses to render a script with errors.
 func (s Stills) Render(src, only string) ([]Still, CheckReport, error) {
-	rep := Check(src)
+	rep := CheckIn(src, s.Dir)
 	if !rep.OK {
 		return nil, rep, fmt.Errorf("the script has errors; run reel check")
 	}

@@ -1,0 +1,17 @@
+diff --git a/internal/cache/cache.go b/internal/cache/cache.go
+index 3f1c2a4..9b7e0d1 100644
+--- a/internal/cache/cache.go
++++ b/internal/cache/cache.go
+@@ -24,9 +24,9 @@ type Cache struct {
+ // Refresh reloads key if its entry is stale.
+ func (c *Cache) Refresh(key string) {
+-	if c.stale(key) {
+-		c.load(key)
+-	}
++	c.group.Do(key, func() (any, error) {
++		if c.stale(key) { c.load(key) }
++		return nil, nil
++	})
+ }
+ 
+ func (c *Cache) stale(key string) bool {

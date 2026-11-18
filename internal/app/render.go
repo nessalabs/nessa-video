@@ -26,6 +26,7 @@ type Videos struct {
 	Workers    int
 	CRF        float64
 	Preset     string
+	Dir        string // where `file=` paths are read from; "" disables files
 }
 
 // RenderStats describes a finished render.
@@ -39,7 +40,7 @@ type RenderStats struct {
 // is called after each frame is encoded.
 func (vs Videos) Render(src string, out io.Writer, progress func(done, total int)) (RenderStats, CheckReport, error) {
 	start := time.Now()
-	rep := Check(src)
+	rep := CheckIn(src, vs.Dir)
 	if !rep.OK {
 		return RenderStats{}, rep, errors.New("the script has errors; run reel check")
 	}

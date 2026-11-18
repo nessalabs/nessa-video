@@ -21,6 +21,7 @@ diagramLinks:
   Motion: play-a-scene
   Render: render-pipeline
   Encode: render-pipeline
+  Code: show-code
   Words: domain-language
 ---
 
@@ -37,6 +38,7 @@ flowchart LR
     CLI --> Script[Script language]
     Script --> Resolve[Check and resolve]
     Theme[Theme pack] --> Resolve
+    Code[Code and diffs] --> Resolve
     Resolve --> Composition[Scenes and styles]
     Composition --> Stage[Layout and stage]
     Motion[Motion] --> Stage
@@ -64,8 +66,9 @@ defines the terms every page uses.
 - `go run -tags resvg ./cmd/bench` renders a four-shot storyboard to measure
   drawing speed. It does not read scripts.
 
-Diffs, arrays, charts, timelines, Mermaid and maths are not drawn yet; they
-appear as labelled placeholders. Voiceover is not planned before them.
+Arrays, charts, timelines, Mermaid and maths are not drawn yet; they appear
+as labelled placeholders. Code and diffs are drawn; see
+[Show code and diffs](show-code.md).
 The [design spec](../spec.html) describes them.
 
 ## Try it
@@ -73,6 +76,7 @@ The [design spec](../spec.html) describes them.
 ```sh
 make build          # needs x264 to build, not to run
 ./bin/reel render examples/cache-refresh.reel
+./bin/reel render examples/code-review.reel
 ./bin/reel check examples/cache-refresh.reel
 ./bin/reel check --explain '#p3' examples/cache-refresh.reel
 ./bin/reel still -o out examples/cache-refresh.reel

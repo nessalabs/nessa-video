@@ -202,6 +202,8 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 			}
 		}
 		return r.Right(), r.Bottom()
+	case el.Code != nil:
+		return e.codePanel(el)
 	case textKinds[kind]:
 		return e.text(el)
 	case kind == "box" || kind == "decision":
@@ -399,3 +401,24 @@ func crossPos(align string, start, avail, size float64) float64 {
 		return start + (avail-size)/2
 	}
 }
+
+// Code panel metrics in design units, shared with the stage.
+const (
+	CodeHeader = 40.0
+	CodeRow    = 26.0
+	CodePad    = 12.0
+	CodeGutter = 72.0 // number column, sign and gap before the code
+)
+
+func (e *engine) codePanel(el *c.Element) (float64, float64) {
+	t := e.opt.Type["code"]
+	w := 0.0
+	for _, l := range el.Code.Lines {
+		w = max(w, e.m.Measure(Untab(l.Text), t.Font, t.Size))
+	}
+	h := CodeHeader + 2*CodePad + CodeRow*float64(len(el.Code.Lines))
+	return max(560, CodeGutter+w+32), h
+}
+
+// Untab expands tabs to four spaces for display.
+func Untab(s string) string { return strings.ReplaceAll(s, "\t", "    ") }

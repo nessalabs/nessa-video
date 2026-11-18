@@ -6,6 +6,7 @@ package composition
 import (
 	"github.com/nessalabs/nessa-video/internal/diag"
 	"github.com/nessalabs/nessa-video/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/source"
 )
 
 // Element is one thing in a scene: a primitive, a component instance, a
@@ -24,6 +25,9 @@ type Element struct {
 
 	// Edge is set when the element is a connector.
 	Edge *Edge
+
+	// Code is set for code and diff blocks.
+	Code *CodeBlock
 
 	parent   *Element
 	owner    *Element // component instance that owns this part
@@ -44,6 +48,16 @@ func (e *Element) Identity() *Element {
 		return e.source
 	}
 	return e
+}
+
+// CodeBlock is source code or a change to it, as numbered lines.
+type CodeBlock struct {
+	Lang   string // lexer name, "" for plain text
+	Path   string // file path shown in the header
+	Header string // hunk header, such as the enclosing function
+	Diff   bool
+	Lines  []source.Line
+	Focus  source.Selection // lines to emphasise; nil means all
 }
 
 // Edge describes a connector between two sets of elements.

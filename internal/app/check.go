@@ -5,6 +5,8 @@ package app
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -35,9 +37,22 @@ type SceneInfo struct {
 	Duration string `json:"duration,omitempty"`
 }
 
-// Check resolves a script and reports its problems.
-func Check(src string) CheckReport {
-	res := resolve.Script(src)
+// Check resolves a script that reads no files.
+func Check(src string) CheckReport { return CheckIn(src, "") }
+
+// CheckIn resolves a script whose `file=` paths are relative to dir.
+// An empty dir means the script cannot read files.
+func CheckIn(src, dir string) CheckReport {
+	var opt resolve.Options
+	if dir != "" {
+		opt.ReadFile = func(p string) ([]byte, error) {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(dir, p)
+			}
+			return os.ReadFile(p)
+		}
+	}
+	res := resolve.ScriptWith(src, opt)
 	v := res.Video
 	rep := CheckReport{
 		OK: !res.Diags.HasErrors(), Title: v.Title, Theme: v.Theme, FPS: v.FPS,

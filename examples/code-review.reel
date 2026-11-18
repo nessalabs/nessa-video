@@ -1,0 +1,29 @@
+video "PR 482 · one refresh per key"
+  size 1920x1080  fps 30
+
+scene problem
+  title "Two callers, ==two reloads=="
+  code go lines=1..6 focus=3..4
+    func handler(w http.ResponseWriter, r *http.Request) {
+        key := r.URL.Query().Get("key")
+        cache.Refresh(key) // every request reloads a stale key
+        item := cache.Get(key)
+        json.NewEncoder(w).Encode(item)
+    }
+  say "Every request that finds a stale key ==reloads it again=="
+
+scene fix
+  clear
+  diff #d file=singleflight.diff
+  mark #d lines=-26..-28
+  wait 1.2s
+  mark #d lines=+26..+29
+  say "singleflight lets ==one caller load== while the rest wait"
+
+scene proof
+  clear
+  terminal #t
+    $ go test -race ./internal/cache
+    ok   internal/cache  0.214s
+  type #t
+  say "The race test passes with ==one load per key=="

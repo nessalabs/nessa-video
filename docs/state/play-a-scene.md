@@ -76,6 +76,7 @@ a dot along the connector that starts at its target. `type` reveals a
 terminal or text block character by character; inline marks such as
 `==this==` are skipped so emphasis is never cut in half. `camera zoom`
 moves the view to frame its target and `camera reset` moves back.
+`mark #d lines=…` moves the focus of a code or diff block to other lines.
 
 ## Leaving
 
