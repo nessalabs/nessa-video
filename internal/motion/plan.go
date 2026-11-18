@@ -109,6 +109,7 @@ type ScenePlan struct {
 	camInit  *c.Element
 	captions []Caption
 	sends    []Send
+	timeline []StepTime
 	marks    map[*c.Element][]Mark
 	ptrs     map[*c.Element][]PointerMove
 	swaps    map[*c.Element][]SwapMove
@@ -428,7 +429,13 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech, Words: st.Words})
 			voiceFree = start + speech + 0.2
 			captionNeed = math.Max(captionNeed, start+speech)
+			// the next step waits for this line, like any other step;
+			// `with` puts a step alongside the line instead
+			if _, set := st.Lookup("for"); !set {
+				dur = speech + 0.2
+			}
 		}
+		sp.timeline = append(sp.timeline, StepTime{Verb: st.Verb, Line: st.Pos.Line, Start: start, Dur: dur, Target: targetSrc(st), Text: st.Text})
 		prevStart = start
 		t = math.Max(t, start+dur)
 		if !st.With {
@@ -566,6 +573,23 @@ func linkBetween(owner, a, b *c.Element) *c.Element {
 		}
 	}
 	return found
+}
+
+// StepTime is when one step runs, in scene seconds.
+type StepTime struct {
+	Verb, Target, Text string
+	Line               int
+	Start, Dur         float64
+}
+
+// Timeline returns when each step of the scene runs.
+func (sp *ScenePlan) Timeline() []StepTime { return sp.timeline }
+
+func targetSrc(st c.Step) string {
+	if st.Target != nil {
+		return st.Target.Src
+	}
+	return strings.Join(st.Args, " ")
 }
 
 // Cue is one narrated line placed on the video's timeline.

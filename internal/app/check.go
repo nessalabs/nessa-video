@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/resolve"
 	"github.com/nessalabs/nessa-video/internal/selector"
+	"github.com/nessalabs/nessa-video/internal/voice"
 )
 
 // CheckReport is the result of checking a script.
@@ -26,11 +28,14 @@ type CheckReport struct {
 	FPS     int         `json:"fps,omitempty"`
 	Theme   string      `json:"theme,omitempty"`
 	Voice   string      `json:"voice,omitempty"`
-	Seconds float64     `json:"seconds"` // video length
+	Lines   int         `json:"narrated_lines,omitempty"` // say lines to speak
+	Spoken  int         `json:"spoken_lines,omitempty"`   // of those, already spoken and cached
+	Seconds float64     `json:"seconds"`                  // video length
 	Scenes  []SceneInfo `json:"scenes"`
 	Diags   diag.List   `json:"diagnostics"`
 
 	video *c.Video
+	plan  *motion.Plan
 }
 
 // SceneInfo summarizes one scene.
@@ -48,7 +53,11 @@ func Check(src string) CheckReport { return CheckIn(src, "") }
 
 // CheckIn resolves a script whose `file=` paths are relative to dir.
 // An empty dir means the script cannot read files.
-func CheckIn(src, dir string) CheckReport {
+func CheckIn(src, dir string) CheckReport { return CheckWith(src, dir, nil) }
+
+// CheckWith is CheckIn with a voice used only for lines it can answer
+// without speaking (an offline cache), so timings match the render.
+func CheckWith(src, dir string, vo func(*c.VoiceSpec) voice.Voice) CheckReport {
 	var opt resolve.Options
 	if dir != "" {
 		opt.ReadFile = func(p string) ([]byte, error) {
@@ -67,11 +76,20 @@ func CheckIn(src, dir string) CheckReport {
 	if rep.Diags == nil {
 		rep.Diags = diag.List{}
 	}
-	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
-	rep.Seconds = round1(plan.Total)
 	if v.Voice != nil {
 		rep.Voice = strings.TrimSpace(v.Voice.Engine + " " + v.Voice.ID)
+		rep.Lines = sayCount(v)
+		if vo != nil && rep.OK {
+			if inst := vo(v.Voice); inst != nil {
+				speech, _ := speakAll(context.Background(), v, inst, nil) // misses are fine
+				applySpeech(v, speech)
+				rep.Spoken = len(speech)
+			}
+		}
 	}
+	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
+	rep.plan = plan
+	rep.Seconds = round1(plan.Total)
 	for i, s := range v.Scenes {
 		n := 0
 		s.Root.Walk(func(*c.Element) { n++ })
@@ -140,6 +158,28 @@ func (r CheckReport) Explain(sel string) ([]Explained, error) {
 
 func round1(f float64) float64 { return math.Round(f*10) / 10 }
 
+// FormatTimeline lists when every step runs, scene by scene.
+func (r CheckReport) FormatTimeline() string {
+	if r.plan == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, sp := range r.plan.Scenes {
+		fmt.Fprintf(&b, "%s  (%.1fs from %.1fs)\n", sp.Scene.Name, sp.Dur, sp.Start)
+		for _, st := range sp.Timeline() {
+			what := st.Verb
+			if st.Target != "" {
+				what += " " + st.Target
+			}
+			if st.Text != "" {
+				what += fmt.Sprintf(" %q", st.Text)
+			}
+			fmt.Fprintf(&b, "  %6.2fs  %5.2fs  line %-4d %s\n", sp.Start+st.Start, st.Dur, st.Line, what)
+		}
+	}
+	return b.String()
+}
+
 // FormatText renders diagnostics for people.
 func (r CheckReport) FormatText(file string) string {
 	var b strings.Builder
@@ -159,7 +199,14 @@ func (r CheckReport) FormatText(file string) string {
 			fmt.Fprintf(&b, "  %-16s %5.1fs  from %5.1fs\n", s.Name, s.Seconds, s.Start)
 		}
 		if r.Voice != "" {
-			fmt.Fprintf(&b, "  narration: %s; lengths are estimated until reel render speaks them\n", r.Voice)
+			switch {
+			case r.Lines > 0 && r.Spoken == r.Lines:
+				fmt.Fprintf(&b, "  narration: %s; all %d lines spoken before, lengths are exact\n", r.Voice, r.Lines)
+			case r.Spoken > 0:
+				fmt.Fprintf(&b, "  narration: %s; %d of %d lines spoken before, the rest estimated\n", r.Voice, r.Spoken, r.Lines)
+			default:
+				fmt.Fprintf(&b, "  narration: %s; lengths are estimated until reel render speaks them\n", r.Voice)
+			}
 		}
 		fmt.Fprintf(&b, "ok: %d scenes, %.1fs, %s, %d fps, theme %s", len(r.Scenes), r.Seconds, r.Size, r.FPS, r.Theme)
 		if warns > 0 {

@@ -327,6 +327,17 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		textColor = p.s.col(v.Value)
 	}
 
+	// dim fades a block's contents too, not only its outline
+	if e.Code != nil || e.Array != nil || e.Chart != nil || e.Timeline != nil || e.Sequence != nil || kind == "math" {
+		dimness := 0.0
+		if eff(ap.State) == "dim" {
+			dimness += ap.Mix
+		}
+		if eff(ap.From) == "dim" {
+			dimness += 1 - ap.Mix
+		}
+		p.opacity *= 1 - 0.55*math.Min(1, dimness)
+	}
 	switch {
 	case !placed || e.Edge != nil:
 	case e.Code != nil:
@@ -605,8 +616,16 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 	}
 	if e.Text != "" {
 		p.opacity = ap.Opacity * ap.FillIn
-		// label the longest horizontal segment, or the longest one if none is horizontal
+		// label the last segment when it has room, so two links leaving one
+		// node keep their labels apart; otherwise the longest horizontal one
 		best, bl := 0, -1.0
+		lt := p.opt.Type["label"]
+		lw := p.s.Measure.Measure(layout.Plain(e.Text), lt.Font, lt.Size)
+		if k := len(pts) - 2; k >= 0 {
+			if l := math.Hypot(pts[k+1][0]-pts[k][0], pts[k+1][1]-pts[k][1]); l >= lw+24 || pts[k][0] == pts[k+1][0] && l >= 40 {
+				best, bl = k, l
+			}
+		}
 		for pass := 0; pass < 2 && bl < 0; pass++ {
 			for i := 0; i+1 < len(pts); i++ {
 				horiz := pts[i][1] == pts[i+1][1]

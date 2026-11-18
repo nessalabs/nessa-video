@@ -79,9 +79,22 @@ The timing rules are part of [Play a scene](play-a-scene.md), and the track is
 added at the end of [Render frames](render-pipeline.md).
 
 Narration never overlaps: a `say` waits until the previous line has finished.
-A scene lasts at least until its last line has been spoken, plus the usual
-hold. Speech length comes from the actual audio at render time, so a narrated
-render can be a little longer or shorter than `reel check` estimated.
+A `say` is a step like any other, lasting as long as its speech plus a short
+breath, so the step after it waits until the line is spoken. To show
+something while a line is spoken, start that step with `with`:
+
+```reel
+  say "Trimmed past ==1024== records" speak="Only the last 1024 records are kept."
+  with mark #schema lines=+107..+108
+```
+
+`for=` on a `say` sets its length instead. A scene lasts at least until its
+last line has been spoken, plus the usual hold.
+
+Speech length comes from the audio. `reel check` and `reel still` read
+lines spoken before from the cache without contacting the voice, so their
+timings are exact for those lines; `reel check` says how many lines were
+exact and estimates the rest from their word count.
 
 ## Captions that follow the voice
 

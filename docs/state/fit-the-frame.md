@@ -74,7 +74,9 @@ column, and a left-to-right flowchart into a top-to-bottom one. While it is
 taller than the frame, the tallest column becomes a row if its children
 would then fit across. Rows and columns with their own `dir`, or with
 `fit=false`, are left alone; a flowchart's `LR` or `TD` header is only a
-preference.
+preference. Turning is kept only when it helps: if the unturned scene, scaled
+down, would be noticeably larger than the turned one, the scene keeps its
+shape and is scaled instead.
 
 ## Scaling what is left
 

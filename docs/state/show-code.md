@@ -76,7 +76,9 @@ left edge. Without a focus every line is shown at full strength.
 A block longer than 16 lines that has a focus, or lines named by `mark` in the
 scene, is folded down to those lines and `context=` lines either side (3 by
 default). Each folded run shows as a dashed "N lines" row, so a large hunk
-stays at a readable size instead of being scaled down. The header's +/−
+stays at a readable size instead of being scaled down. When many marks
+would still leave more than 18 rows, the context shrinks, down to the marked
+lines alone. The header's +/−
 counts still describe the whole hunk. `reel check` warns when a focus names
 lines the block does not show.
 

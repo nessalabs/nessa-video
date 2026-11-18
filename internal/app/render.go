@@ -72,17 +72,7 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 		if speech, err = speakAll(context.Background(), v, vo, vs.Log); err != nil {
 			return RenderStats{}, rep, err
 		}
-		for k, s := range speech {
-			st := &v.Scenes[k[0]].Steps[k[1]]
-			st.Speech = s.Audio.Seconds()
-			if _, own := st.Lookup("speak"); !own {
-				timed := s.Words
-				if len(timed) == 0 { // the engine gave no timings: estimate them
-					timed = voice.EstimateWords(voice.Plain(st.Spoken()), s.Audio.Seconds())
-				}
-				st.Words = alignWords(st.Text, timed)
-			}
-		}
+		applySpeech(v, speech)
 	}
 	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
 	lays := map[*c.Scene]layout.Result{}
@@ -179,6 +169,34 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 	}
 	stats := RenderStats{Frames: n, Duration: time.Duration(float64(n) / float64(v.FPS) * float64(time.Second)), Took: time.Since(start), Spoken: len(speech)}
 	return stats, rep, firstErr
+}
+
+// applySpeech records speech lengths and word timings on the say steps.
+func applySpeech(v *c.Video, speech map[[2]int]voice.Spoken) {
+	for k, s := range speech {
+		st := &v.Scenes[k[0]].Steps[k[1]]
+		st.Speech = s.Audio.Seconds()
+		if _, own := st.Lookup("speak"); !own {
+			timed := s.Words
+			if len(timed) == 0 { // the engine gave no timings: estimate them
+				timed = voice.EstimateWords(voice.Plain(st.Spoken()), s.Audio.Seconds())
+			}
+			st.Words = alignWords(st.Text, timed)
+		}
+	}
+}
+
+// sayCount counts the say lines that will be spoken.
+func sayCount(v *c.Video) int {
+	n := 0
+	for _, sc := range v.Scenes {
+		for _, st := range sc.Steps {
+			if st.Verb == "say" && strings.TrimSpace(voice.Plain(st.Spoken())) != "" {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // speakAll narrates every say step, a few at a time.

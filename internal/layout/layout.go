@@ -116,6 +116,25 @@ func Scene(root *c.Element, area Rect, m Measurer, opt Options) Result {
 		}
 		break
 	}
+	// Turning containers is only worth it if the result needs less scaling
+	// than leaving them as written; a turned row that still has to shrink
+	// a lot is usually worse to read.
+	fitOf := func(w, h float64) float64 { return min(1, area.W/w, area.H/h) }
+	if len(e.flip) > 0 && fitOf(w, h) < 1 {
+		flips, fitFlipped := e.flip, fitOf(w, h)
+		e.flip = map[*c.Element]bool{}
+		e.size = map[*c.Element][2]float64{}
+		e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}}
+		w2, h2 := e.measure(root)
+		if fitOf(w2, h2) > fitFlipped+0.02 {
+			w, h = w2, h2
+		} else {
+			e.flip = flips
+			e.size = map[*c.Element][2]float64{}
+			e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}}
+			w, h = e.measure(root)
+		}
+	}
 	r := Rect{area.X + (area.W-w)/2, area.Y + (area.H-h)/2, w, h}
 	e.place(root, r)
 	e.res.Content = r

@@ -144,6 +144,18 @@ func (v Silent) Speak(_ context.Context, text string) (Spoken, error) {
 	return Spoken{Audio: make(Speech, int(float64(n)/wps*Rate))}, nil // timings left to the core
 }
 
+// ErrNotCached is returned by Offline for a line that has not been spoken yet.
+var ErrNotCached = fmt.Errorf("not spoken yet")
+
+// Offline stands in for a voice without contacting it. Wrapped in Cached,
+// it answers only from the cache, which lets `reel check` and `reel still`
+// use real narration lengths without network access.
+type Offline struct{ K string }
+
+func (o Offline) Key() string { return o.K }
+
+func (Offline) Speak(context.Context, string) (Spoken, error) { return Spoken{}, ErrNotCached }
+
 // Engines lists the voice engines scripts can name.
 var Engines = []string{"elevenlabs", "silent"}
 

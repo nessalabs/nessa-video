@@ -30,7 +30,9 @@ beat out or label it plainly as an example.
   `voice elevenlabs VOICE_ID`. Captions then follow the voice word by word.
   Use `say speak="…"` to show and speak the same sentence, or
   `say "short caption" speak="the full spoken sentence"` to speak more than
-  the caption shows. Never
+  the caption shows. A `say` holds the next step until it has been spoken;
+  start a step with `with` to show it while the line is spoken
+  (`say "…"` then `with mark #diff lines=+12..+14`). Never
   write an API key into a script; it comes from `ELEVENLABS_API_KEY` or a
   local `.env`. If no key is available, render with `--mute`.
 - One idea per scene and one caption per scene. Use `==…==` for the two or
@@ -54,6 +56,8 @@ beat out or label it plainly as an example.
 ```sh
 reel check video.reel                 # problems, plus each scene's length
 reel still -o stills video.reel       # one PNG per scene, after its steps
+reel check --timeline video.reel      # when every step starts and ends
+reel still --at 42.5 -o f.png video.reel  # the frame at a moment
 reel render -o video.mp4 video.reel
 ```
 
@@ -62,7 +66,8 @@ suggests a fix. It also prints how long each scene plays, so you can aim for
 a length before rendering (`--json` has the same numbers). If you can view images, look at the stills before rendering
 and fix overlaps, empty scenes or text that runs off the frame.
 `reel check --explain '#id' video.reel` shows why an element looks the way
-it does. `reel ref` lists every kind, step and property.
+it does. `reel ref` lists every kind, step and property. With narration,
+check the timeline: each highlight should start with the line about it.
 
 ## Report
 

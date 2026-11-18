@@ -46,7 +46,16 @@ func New(id, model string) (*Voice, error) {
 }
 
 // Key implements voice.Voice.
-func (v *Voice) Key() string { return "elevenlabs/" + v.ID + "/" + v.Model + "/pcm24k+words" }
+func (v *Voice) Key() string { return KeyFor(v.ID, v.Model) }
+
+// KeyFor is the cache key for a voice and model, so cached lines can be
+// found without an API key.
+func KeyFor(id, model string) string {
+	if model == "" {
+		model = DefaultModel
+	}
+	return "elevenlabs/" + id + "/" + model + "/pcm24k+words"
+}
 
 // Speak asks the API for 24 kHz 16-bit mono PCM with character timings,
 // and turns those into word timings.

@@ -7,6 +7,7 @@ summary: reel still lays out each scene, applies its steps, and paints the resul
 parent: reel
 sources:
   - internal/app/still.go
+  - internal/app/check.go
   - internal/layout/layout.go
   - internal/motion/moment.go
   - internal/stage/stage.go
@@ -35,7 +36,9 @@ diagramDetails:
 `reel still FILE` draws every scene as a PNG, showing how it looks once all
 of its steps have run. It is the quickest way for an agent or a person to see
 a script before animation exists. `--scene NAME` draws one scene, and `-o`
-picks the folder or file.
+picks the folder or file. `--at 42.5` draws the single frame at that many
+seconds into the video instead, mid-animation, with narration lengths read
+from the cache as `reel check` does.
 
 ```mermaid
 stateDiagram-v2

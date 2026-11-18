@@ -475,6 +475,20 @@ func (r *resolver) sceneChild(s *c.Scene, n *script.Node, vars map[string]string
 	}
 }
 
+// joinGroups rejoins a selector group that spaces split, so that
+// `focus #a, #b` targets both elements.
+func joinGroups(args []script.Arg) []script.Arg {
+	var out []script.Arg
+	for _, a := range args {
+		if n := len(out); n > 0 && !a.Quoted && !out[n-1].Quoted && strings.HasSuffix(out[n-1].Text, ",") {
+			out[n-1].Text += " " + a.Text
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
 func (r *resolver) callSequence(s *c.Scene, q *seq, n *script.Node) {
 	vars := map[string]string{}
 	for _, p := range q.defaults {
@@ -507,7 +521,7 @@ func (r *resolver) callSequence(s *c.Scene, q *seq, n *script.Node) {
 
 func (r *resolver) step(n *script.Node) c.Step {
 	st := c.Step{Verb: n.Kind, With: n.With, Pos: n.Pos}
-	args := n.Args
+	args := joinGroups(n.Args)
 	for _, p := range n.Props {
 		st.Decls = append(st.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
 		if n.Kind != "ptr" { // ptr takes pointer names as keys
@@ -1215,7 +1229,12 @@ func (r *resolver) windowCode(s *c.Scene) {
 				context = n
 			}
 		}
-		e.Code.Lines = source.Window(e.Code.Lines, keep[e.Code], context, 16)
+		lines := source.Window(e.Code.Lines, keep[e.Code], context, 16)
+		for context > 0 && len(lines) > 18 { // many marks: keep fewer lines around each
+			context--
+			lines = source.Window(e.Code.Lines, keep[e.Code], context, 16)
+		}
+		e.Code.Lines = lines
 		e.Code.Windowed = true
 	})
 }

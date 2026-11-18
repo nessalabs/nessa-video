@@ -117,3 +117,18 @@ scene s
 		t.Errorf("row width with a hidden child = %v, want 100", w)
 	}
 }
+
+// A row stays a row when scaling it fits better than turning it into a column.
+func TestKeepsRowWhenScalingFitsBetter(t *testing.T) {
+	r := resolve.Script("video \"t\"\nscene s\n  row #r gap=20\n    box #a w=400 h=100\n    box #b w=400 h=100\n    box #c w=400 h=100\n")
+	root := r.Video.Scenes[0].Root
+	// row: 1240 wide in 1000 fits at 0.81; column: 340 tall in 250 fits at 0.74
+	res := Scene(root, Rect{0, 0, 1000, 250}, fixed{}, opts())
+	a, b := box(t, root, res, "#a"), box(t, root, res, "#b")
+	if a.Y != b.Y || b.X <= a.X {
+		t.Errorf("row flipped although scaling fits better: a=%+v b=%+v", a, b)
+	}
+	if res.Fit < 0.8 || res.Fit > 0.81 {
+		t.Errorf("fit = %v, want about 0.806", res.Fit)
+	}
+}

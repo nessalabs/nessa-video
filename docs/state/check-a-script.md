@@ -104,4 +104,6 @@ Repeated problems from elements carried into later scenes are reported once.
 
 When the script is clean, `reel check` prints each scene's length and start
 time and the video's total, from the same plan `reel render` uses. `--json`
-includes them as `seconds` and `start` per scene.
+includes them as `seconds` and `start` per scene. `--timeline` lists every
+step with its start, its length and its line, which is how to see whether a
+highlight lands with the line that talks about it.

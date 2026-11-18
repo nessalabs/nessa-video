@@ -25,8 +25,8 @@ import (
 const usage = `reel turns .reel scripts into explainer videos.
 
 Usage:
-  reel check [--json] [--explain SELECTOR] FILE
-  reel still [--scene NAME] [-o PATH] FILE
+  reel check [--json] [--timeline] [--explain SELECTOR] FILE
+  reel still [--scene NAME | --at SECONDS] [-o PATH] FILE
   reel render [-o OUT.mp4] [--crf N] [--preset NAME] [--mute] FILE
   reel themes
   reel theme export NAME [DIR]
@@ -77,6 +77,7 @@ func check(args []string) int {
 	fs := flag.NewFlagSet("check", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "print JSON")
 	explain := fs.String("explain", "", "show where each property of matching elements came from")
+	timeline := fs.Bool("timeline", false, "list when every step runs")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "usage: reel check [--json] [--explain SELECTOR] FILE")
@@ -88,7 +89,7 @@ func check(args []string) int {
 		fmt.Fprintln(os.Stderr, "reel:", err)
 		return 2
 	}
-	rep := app.CheckIn(string(src), filepath.Dir(file))
+	rep := app.CheckWith(string(src), filepath.Dir(file), offlineVoice)
 
 	if *explain != "" {
 		ex, err := rep.Explain(*explain)
@@ -116,6 +117,9 @@ func check(args []string) int {
 	if *asJSON {
 		printJSON(rep)
 	} else {
+		if *timeline && rep.OK {
+			fmt.Print(rep.FormatTimeline())
+		}
 		fmt.Print(rep.FormatText(file))
 	}
 	if !rep.OK {
@@ -152,6 +156,7 @@ func printJSON(v any) {
 func still(args []string) int {
 	fs := flag.NewFlagSet("still", flag.ExitOnError)
 	scene := fs.String("scene", "", "render only this scene")
+	at := fs.Float64("at", -1, "render the frame at this many seconds into the video instead")
 	out := fs.String("o", ".", "output directory, or a .png file with --scene")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
@@ -169,7 +174,35 @@ func still(args []string) int {
 		fmt.Fprintln(os.Stderr, "reel:", err)
 		return 1
 	}
-	stills, rep, err := app.Stills{Raster: cv, Measure: cv, Dir: filepath.Dir(file)}.Render(string(src), *scene)
+	sa := app.Stills{Raster: cv, Measure: cv, Dir: filepath.Dir(file), Voice: offlineVoice}
+	if *at >= 0 {
+		img, rep, err := sa.RenderAt(string(src), *at)
+		if err != nil {
+			if !rep.OK {
+				fmt.Fprint(os.Stderr, rep.FormatText(file))
+			}
+			fmt.Fprintln(os.Stderr, "reel:", err)
+			return 1
+		}
+		path := *out
+		if !strings.HasSuffix(strings.ToLower(path), ".png") {
+			stem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+			os.MkdirAll(path, 0o755)
+			path = filepath.Join(path, fmt.Sprintf("%s-at-%.2fs.png", stem, *at))
+		}
+		f, err := os.Create(path)
+		if err == nil {
+			err = png.Encode(f, img)
+			f.Close()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "reel:", err)
+			return 1
+		}
+		fmt.Println(path)
+		return 0
+	}
+	stills, rep, err := sa.Render(string(src), *scene)
 	if err != nil {
 		if !rep.OK {
 			fmt.Fprint(os.Stderr, rep.FormatText(file))
@@ -381,4 +414,16 @@ func loadDotEnv(paths ...string) {
 			}
 		}
 	}
+}
+
+// offlineVoice answers narration from the cache only, never the network, so
+// check and still can use the lengths a previous render spoke.
+func offlineVoice(spec *c.VoiceSpec) voice.Voice {
+	switch spec.Engine {
+	case "elevenlabs":
+		return voice.Cached{Voice: voice.Offline{K: elevenlabs.KeyFor(spec.ID, spec.Model)}, Dir: voice.CacheDir()}
+	case "silent":
+		return voice.Silent{}
+	}
+	return nil
 }

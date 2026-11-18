@@ -489,3 +489,37 @@ func TestLongDiffIsFoldedAroundFocusAndMarks(t *testing.T) {
 		t.Errorf("partial focus should warn: %v", r.Diags)
 	}
 }
+
+// Many marks tighten the context around each so the block stays readable.
+func TestManyMarksTightenFolding(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("--- a/x.go\n+++ b/x.go\n@@ -1,100 +1,100 @@\n")
+	for i := 1; i <= 100; i++ {
+		fmt.Fprintf(&b, " line%d\n", i)
+	}
+	opt := Options{ReadFile: func(string) ([]byte, error) { return []byte(b.String()), nil }}
+	src := "video \"t\"\nscene s\n  diff #d file=x.diff focus=+5\n"
+	marks := []int{20, 35, 50, 65, 80}
+	for _, m := range marks {
+		src += fmt.Sprintf("  mark #d lines=+%d\n", m)
+	}
+	res := ScriptWith(src, opt)
+	if len(res.Diags) > 0 {
+		t.Fatal(res.Diags)
+	}
+	cb := c.Select(res.Video.Scenes[0].Root, mustSel(t, "#d"))[0].Code
+	if len(cb.Lines) > 18 {
+		t.Fatalf("%d rows shown; want at most 18", len(cb.Lines))
+	}
+	shown := map[int]bool{}
+	for _, l := range cb.Lines {
+		if l.Kind != 3 {
+			shown[l.New] = true
+		}
+	}
+	for _, m := range append(marks, 5) {
+		if !shown[m] {
+			t.Errorf("marked line +%d was folded away", m)
+		}
+	}
+}

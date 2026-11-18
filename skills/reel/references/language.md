@@ -71,11 +71,11 @@ Steps run one after another after the scene's elements have entered.
 | --- | --- |
 | `focus`, `dim`, `active`, `select`, `trace`, `rest` `SELECTOR` | change state |
 | `leave SELECTOR` | play its exit |
-| `say "caption"` | caption at the bottom; spoken when the video has a voice, highlighting each word as it is said; `say speak="…"` shows and speaks the same words; `say "short" speak="longer"` speaks more than it shows |
+| `say "caption"` | caption at the bottom; spoken when the video has a voice, highlighting each word as it is said; `say speak="…"` shows and speaks the same words; `say "short" speak="longer"` speaks more than it shows. The next step waits until the line is spoken; use `with` to run a step during it |
 | `camera zoom SELECTOR`, `camera reset` | move the view |
 | `send SELECTOR` | dot along the connector starting there |
 | `type SELECTOR` | type out a terminal, code or text block |
-| `mark SELECTOR lines=…` / `cells=…` | move a code or array focus |
+| `mark SELECTOR lines=…` / `cells=…` | move a code or array focus; `lines=+12..+14,+20` takes several ranges |
 | `ptr #a lo=2` / `swap #a 0 3` | move pointers, swap cells |
 | `walk #flow A B C` | light diagram nodes in order |
 | `play #tl` | sweep a timeline playhead, or reveal a sequence diagram's rows |
@@ -88,7 +88,8 @@ scene's length. Otherwise everything is automatic.
 ## Selectors and style
 
 `kind`, `#id`, `.class`, `#id/part`, `a b` (inside), `a > b` (child),
-`[state=dim]`, `:first`, `:last`, `:nth(2)`, `:not(…)`, `a, b`.
+`[state=dim]`, `:first`, `:last`, `:nth(2)`, `:not(…)`, `a, b`. Steps take
+groups too: `focus #a, #b`.
 
 Values come from, lowest to highest: theme defaults, theme rules, the
 script's `style` block (more specific selectors win), the element's own line.
