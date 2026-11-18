@@ -14,9 +14,12 @@ import (
 	"github.com/nessalabs/nessa-video/internal/app"
 	c "github.com/nessalabs/nessa-video/internal/composition"
 	"github.com/nessalabs/nessa-video/internal/encode"
+	"github.com/nessalabs/nessa-video/internal/encode/aac"
 	"github.com/nessalabs/nessa-video/internal/encode/x264"
 	"github.com/nessalabs/nessa-video/internal/render/canvas"
 	"github.com/nessalabs/nessa-video/internal/theme"
+	"github.com/nessalabs/nessa-video/internal/voice"
+	"github.com/nessalabs/nessa-video/internal/voice/elevenlabs"
 )
 
 const usage = `reel turns .reel scripts into explainer videos.
@@ -24,7 +27,7 @@ const usage = `reel turns .reel scripts into explainer videos.
 Usage:
   reel check [--json] [--explain SELECTOR] FILE
   reel still [--scene NAME] [-o PATH] FILE
-  reel render [-o OUT.mp4] [--crf N] [--preset NAME] FILE
+  reel render [-o OUT.mp4] [--crf N] [--preset NAME] [--mute] FILE
   reel themes
   reel theme export NAME [DIR]
   reel ref
@@ -212,6 +215,7 @@ func renderCmd(args []string) int {
 	out := fs.String("o", "", "output file (default: the script name with .mp4)")
 	crf := fs.Float64("crf", 18, "quality: lower is better and larger, 14 to 28 is useful")
 	preset := fs.String("preset", "veryfast", "x264 speed preset: ultrafast to slow")
+	mute := fs.Bool("mute", false, "skip narration even if the script names a voice")
 	fs.Parse(args)
 	if fs.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "usage: reel render [-o OUT.mp4] [--crf N] [--preset NAME] FILE")
@@ -223,6 +227,7 @@ func renderCmd(args []string) int {
 		fmt.Fprintln(os.Stderr, "reel:", err)
 		return 2
 	}
+	loadDotEnv(dotEnvPaths(file)...)
 	if *out == "" {
 		*out = strings.TrimSuffix(file, filepath.Ext(file)) + ".mp4"
 	}
@@ -239,7 +244,23 @@ func renderCmd(args []string) int {
 	}
 	vs := app.Videos{
 		Raster: cv, Measure: cv, CRF: *crf, Preset: *preset, Dir: filepath.Dir(file),
-		NewEncoder: func(w io.Writer, o encode.Options) (encode.Encoder, error) { return x264.New(w, o) },
+		NewEncoder:  func(w io.Writer, o encode.Options) (encode.Encoder, error) { return x264.New(w, o) },
+		Mute:        *mute,
+		EncodeAudio: aac.Encode,
+		Log:         func(m string) { fmt.Fprintln(os.Stderr, m) },
+		NewVoice: func(spec *c.VoiceSpec) (voice.Voice, error) {
+			switch spec.Engine {
+			case "elevenlabs":
+				el, err := elevenlabs.New(spec.ID, spec.Model)
+				if err != nil {
+					return nil, err
+				}
+				return voice.Cached{Voice: el, Dir: voice.CacheDir()}, nil
+			case "silent":
+				return voice.Silent{}, nil
+			}
+			return nil, fmt.Errorf("unknown voice engine %q", spec.Engine)
+		},
 	}
 	last := -1
 	stats, rep, err := vs.Render(string(src), f, func(done, total int) {
@@ -264,8 +285,12 @@ func renderCmd(args []string) int {
 		fmt.Fprintln(os.Stderr, "reel:", err)
 		return 1
 	}
-	fmt.Printf("%s: %d frames, %.1fs of video in %.2fs (%.1fx real time)\n",
-		*out, stats.Frames, stats.Duration.Seconds(), stats.Took.Seconds(), stats.Duration.Seconds()/stats.Took.Seconds())
+	spoken := ""
+	if stats.Spoken > 0 {
+		spoken = fmt.Sprintf(", %d narrated lines", stats.Spoken)
+	}
+	fmt.Printf("%s: %d frames, %.1fs of video%s in %.2fs (%.1fx real time)\n",
+		*out, stats.Frames, stats.Duration.Seconds(), spoken, stats.Took.Seconds(), stats.Duration.Seconds()/stats.Took.Seconds())
 	return 0
 }
 
@@ -304,4 +329,56 @@ func themeCmd(args []string) int {
 	}
 	fmt.Printf("%s\nuse it with `theme %s` in a script's video block\n", path, filepath.ToSlash(dir))
 	return 0
+}
+
+// dotEnvPaths lists .env files in the script's folder and its parents, then
+// the current folder and its parents, nearest first.
+func dotEnvPaths(file string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, start := range []string{filepath.Dir(file), "."} {
+		dir, err := filepath.Abs(start)
+		if err != nil {
+			continue
+		}
+		for {
+			p := filepath.Join(dir, ".env")
+			if !seen[p] {
+				seen[p] = true
+				out = append(out, p)
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return out
+}
+
+// loadDotEnv reads KEY=VALUE lines from the first files that exist and sets
+// variables that are not already set, so API keys can live in a local,
+// git-ignored .env file instead of the shell.
+func loadDotEnv(paths ...string) {
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			k, v, ok := strings.Cut(strings.TrimPrefix(line, "export "), "=")
+			if !ok {
+				continue
+			}
+			k, v = strings.TrimSpace(k), strings.Trim(strings.TrimSpace(v), `"'`)
+			if _, set := os.LookupEnv(k); !set {
+				os.Setenv(k, v)
+			}
+		}
+	}
 }

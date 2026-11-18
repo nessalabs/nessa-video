@@ -102,6 +102,10 @@ last caption has had time to be read, whichever is later. `hold 2s` adds to
 the hold. `scene name 6s` fixes the length exactly; anything past it is cut.
 Reading time assumes about 2.8 words per second.
 
+With a voice, narration sets the pace instead of reading time: each line
+waits for the previous one to finish, and the scene lasts until its last line
+has been spoken. See [Narrate a video](narrate.md).
+
 Durations come from the theme: draw 0.6 s, fade 0.35 s, rise 0.45 s, state
 changes 0.3 s, camera moves 0.7 s and packets 0.8 s. All motion uses the same
 ease-in-out curve.

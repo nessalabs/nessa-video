@@ -6,6 +6,7 @@
 video "PR 482 · one refresh per key"
   size 1920x1080  fps 30          # 1080x1920 for phones
   theme hairline                  # default; or a folder such as themes/brand
+  voice elevenlabs VOICE_ID       # optional narration; key from ELEVENLABS_API_KEY or .env
 
 tokens                            # optional: override theme tokens
   line-2 #D4D7DE
@@ -70,7 +71,7 @@ Steps run one after another after the scene's elements have entered.
 | --- | --- |
 | `focus`, `dim`, `active`, `select`, `trace`, `rest` `SELECTOR` | change state |
 | `leave SELECTOR` | play its exit |
-| `say "caption"` | caption at the bottom |
+| `say "caption"` | caption at the bottom; spoken when the video has a voice; `speak="…"` speaks other words |
 | `camera zoom SELECTOR`, `camera reset` | move the view |
 | `send SELECTOR` | dot along the connector starting there |
 | `type SELECTOR` | type out a terminal, code or text block |

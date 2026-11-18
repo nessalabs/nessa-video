@@ -16,6 +16,7 @@ require (
 	github.com/benoitkugler/textlayout v0.3.2 // indirect
 	github.com/benoitkugler/textprocessing v0.0.6 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
+	github.com/gen2brain/aac-go v0.0.0-20230119102159-ef1e76509d21 // indirect
 	github.com/go-fonts/latin-modern v0.3.3 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect

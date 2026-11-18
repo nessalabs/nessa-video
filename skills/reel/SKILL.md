@@ -26,6 +26,11 @@ beat out or label it plainly as an example.
 
 ## Write the script
 
+- Narration is optional. If the person wants a voice, add
+  `voice elevenlabs VOICE_ID` and keep captions short, putting the full
+  sentence in `say "short caption" speak="the full spoken sentence"`. Never
+  write an API key into a script; it comes from `ELEVENLABS_API_KEY` or a
+  local `.env`. If no key is available, render with `--mute`.
 - One idea per scene and one caption per scene. Use `==…==` for the two or
   three words that matter.
 - About six elements per scene at most. Use `camera zoom` or a new scene

@@ -58,10 +58,14 @@ type CameraMove struct {
 	Start, Dur float64
 }
 
-// Caption is a line of text shown from Start until the next caption or the scene's end.
+// Caption is a line of text shown from Start until the next caption or the
+// scene's end. Step is the say step's index in its scene; Speech is the
+// narration length when the line is spoken.
 type Caption struct {
-	Text  string
-	Start float64
+	Text   string
+	Start  float64
+	Step   int
+	Speech float64
 }
 
 // Mark changes which lines of a code block, or cells of an array, are emphasised.
@@ -264,9 +268,9 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		t += 0.15
 	}
 	prevStart := t
-	var captionNeed float64
+	var captionNeed, voiceFree float64
 	var hold float64
-	for _, st := range sc.Steps {
+	for si, st := range sc.Steps {
 		start := t
 		if st.With {
 			start = prevStart
@@ -413,9 +417,16 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				}
 			}
 		case "say":
-			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start})
-			words := len(strings.Fields(strings.ReplaceAll(st.Text, "==", "")))
-			captionNeed = math.Max(captionNeed, start+float64(words)/tm.WordsPerSec)
+			// narration never overlaps: a line waits for the previous one
+			start = math.Max(start, voiceFree)
+			speech := st.Speech
+			if speech <= 0 {
+				words := len(strings.Fields(strings.ReplaceAll(st.Spoken(), "==", "")))
+				speech = float64(words) / tm.WordsPerSec
+			}
+			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech})
+			voiceFree = start + speech + 0.2
+			captionNeed = math.Max(captionNeed, start+speech)
 		}
 		prevStart = start
 		t = math.Max(t, start+dur)
@@ -554,4 +565,24 @@ func linkBetween(owner, a, b *c.Element) *c.Element {
 		}
 	}
 	return found
+}
+
+// Cue is one narrated line placed on the video's timeline.
+type Cue struct {
+	At    float64 // seconds into the video
+	Scene int     // index into the video's scenes
+	Step  int     // index of the say step in that scene
+}
+
+// Narration lists every say step that has speech, in time order.
+func (p *Plan) Narration() []Cue {
+	var out []Cue
+	for i, sp := range p.Scenes {
+		for _, cp := range sp.captions {
+			if cp.Speech > 0 {
+				out = append(out, Cue{At: sp.Start + cp.Start, Scene: i, Step: cp.Step})
+			}
+		}
+	}
+	return out
 }

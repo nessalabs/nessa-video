@@ -19,7 +19,20 @@ type Writer struct {
 	samples       [][]byte
 	keys          []uint32
 	closed        bool
+
+	audio *Audio
 }
+
+// Audio is an AAC track to store next to the video.
+type Audio struct {
+	Rate, Channels  int
+	Config          []byte // AudioSpecificConfig
+	Frames          [][]byte
+	SamplesPerFrame int
+}
+
+// SetAudio adds an AAC track. Call it before Close.
+func (m *Writer) SetAudio(a *Audio) { m.audio = a }
 
 // New starts a file for H.264 video of the given size and frame rate.
 // sps and pps are the raw parameter sets without length prefixes.
@@ -80,9 +93,15 @@ func (m *Writer) Close() error {
 	}
 	ftyp := box("ftyp", []byte("isom"), []byte{0, 0, 2, 0}, []byte("isomiso2avc1mp41"))
 
-	var total uint64
+	var videoBytes, total uint64
 	for _, s := range m.samples {
-		total += uint64(len(s))
+		videoBytes += uint64(len(s))
+	}
+	total = videoBytes
+	if m.audio != nil {
+		for _, f := range m.audio.Frames {
+			total += uint64(len(f))
+		}
 	}
 	large := total+8 > 0xFFFFFFFF
 	mdatHeader := 8
@@ -91,9 +110,9 @@ func (m *Writer) Close() error {
 	}
 	// moov size does not depend on the chunk offset value, so build it once
 	// with a placeholder, then again with the real offset.
-	moov := m.moov(0, large)
+	moov := m.moov(0, 0, large)
 	offset := uint64(len(ftyp)+len(moov)) + uint64(mdatHeader)
-	moov = m.moov(offset, large)
+	moov = m.moov(offset, offset+videoBytes, large)
 
 	if _, err := m.w.Write(ftyp); err != nil {
 		return err
@@ -118,10 +137,17 @@ func (m *Writer) Close() error {
 			return err
 		}
 	}
+	if m.audio != nil {
+		for _, f := range m.audio.Frames {
+			if _, err := m.w.Write(f); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
-func (m *Writer) moov(chunkOffset uint64, large bool) []byte {
+func (m *Writer) moov(chunkOffset, audioOffset uint64, large bool) []byte {
 	n := uint32(len(m.samples))
 	timescale := uint32(m.fps * 1000)
 	durMedia := uint64(n) * 1000
@@ -137,7 +163,7 @@ func (m *Writer) moov(chunkOffset uint64, large bool) []byte {
 	mvhd.zero(10)
 	writeMatrix(&mvhd)
 	mvhd.zero(24)
-	mvhd.u32(2) // next track id
+	mvhd.u32(3) // next track id
 
 	var tkhd buf
 	tkhd.u32(0)
@@ -276,11 +302,139 @@ func (m *Writer) moov(chunkOffset uint64, large bool) []byte {
 	minf := box("minf", full("vmhd", 0, 1, vmhd.Bytes()), box("dinf", full("dref", 0, 0, dref.Bytes())), stbl)
 	mdia := box("mdia", full("mdhd", 0, 0, mdhd.Bytes()), full("hdlr", 0, 0, hdlr.Bytes()), minf)
 	trak := box("trak", full("tkhd", 0, 3, tkhd.Bytes()), mdia)
-	return box("moov", full("mvhd", 0, 0, mvhd.Bytes()), trak)
+	if m.audio == nil || len(m.audio.Frames) == 0 {
+		return box("moov", full("mvhd", 0, 0, mvhd.Bytes()), trak)
+	}
+	return box("moov", full("mvhd", 0, 0, mvhd.Bytes()), trak, m.audioTrak(audioOffset, large, durMovie))
 }
 
 func writeMatrix(b *buf) {
 	for _, v := range []uint32{0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000} {
 		b.u32(v)
 	}
+}
+
+// descr writes an MPEG-4 descriptor with a one-byte length.
+func descr(tag byte, body []byte) []byte {
+	return append([]byte{tag, byte(len(body))}, body...)
+}
+
+func (m *Writer) audioTrak(offset uint64, large bool, durMovie uint64) []byte {
+	a := m.audio
+	n := uint32(len(a.Frames))
+	spf := uint32(a.SamplesPerFrame)
+	durMedia := uint64(n) * uint64(spf)
+
+	var tkhd buf
+	tkhd.u32(0)
+	tkhd.u32(0)
+	tkhd.u32(2) // track id
+	tkhd.u32(0)
+	tkhd.u32(uint32(durMedia * 1000 / uint64(a.Rate)))
+	tkhd.zero(8)
+	tkhd.u16(0)
+	tkhd.u16(1)      // alternate group
+	tkhd.u16(0x0100) // volume 1.0
+	tkhd.u16(0)
+	writeMatrix(&tkhd)
+	tkhd.u32(0)
+	tkhd.u32(0)
+
+	var mdhd buf
+	mdhd.u32(0)
+	mdhd.u32(0)
+	mdhd.u32(uint32(a.Rate))
+	mdhd.u32(uint32(durMedia))
+	mdhd.u16(0x55C4)
+	mdhd.u16(0)
+
+	var hdlr buf
+	hdlr.u32(0)
+	hdlr.WriteString("soun")
+	hdlr.zero(12)
+	hdlr.WriteString("reel narration\x00")
+
+	var smhd buf
+	smhd.zero(4)
+
+	var dref buf
+	dref.u32(1)
+	dref.Write(full("url ", 0, 1))
+
+	var maxSize uint32
+	var total uint64
+	for _, f := range a.Frames {
+		maxSize = max(maxSize, uint32(len(f)))
+		total += uint64(len(f))
+	}
+	secs := float64(durMedia) / float64(a.Rate)
+	avg := uint32(0)
+	if secs > 0 {
+		avg = uint32(float64(total*8) / secs)
+	}
+	var dc buf
+	dc.u8(0x40) // MPEG-4 audio
+	dc.u8(0x15) // audio stream
+	dc.u8(byte(maxSize >> 16))
+	dc.u16(uint16(maxSize))
+	dc.u32(avg * 2)
+	dc.u32(avg)
+	dc.Write(descr(0x05, a.Config))
+	var es buf
+	es.u16(0) // ES id
+	es.u8(0)
+	es.Write(descr(0x04, dc.Bytes()))
+	es.Write(descr(0x06, []byte{0x02}))
+	esds := full("esds", 0, 0, descr(0x03, es.Bytes()))
+
+	var mp4a buf
+	mp4a.zero(6)
+	mp4a.u16(1)
+	mp4a.zero(8)
+	mp4a.u16(uint16(a.Channels))
+	mp4a.u16(16)
+	mp4a.u16(0)
+	mp4a.u16(0)
+	mp4a.u32(uint32(a.Rate) << 16)
+	mp4a.Write(esds)
+
+	var stsd buf
+	stsd.u32(1)
+	stsd.Write(box("mp4a", mp4a.Bytes()))
+
+	var stts buf
+	stts.u32(1)
+	stts.u32(n)
+	stts.u32(spf)
+
+	var stsc buf
+	stsc.u32(1)
+	stsc.u32(1)
+	stsc.u32(n)
+	stsc.u32(1)
+
+	var stsz buf
+	stsz.u32(0)
+	stsz.u32(n)
+	for _, f := range a.Frames {
+		stsz.u32(uint32(len(f)))
+	}
+
+	var stco []byte
+	if large {
+		var b buf
+		b.u32(1)
+		b.u64(offset)
+		stco = full("co64", 0, 0, b.Bytes())
+	} else {
+		var b buf
+		b.u32(1)
+		b.u32(uint32(offset))
+		stco = full("stco", 0, 0, b.Bytes())
+	}
+	stbl := box("stbl", full("stsd", 0, 0, stsd.Bytes()), full("stts", 0, 0, stts.Bytes()),
+		full("stsc", 0, 0, stsc.Bytes()), full("stsz", 0, 0, stsz.Bytes()), stco)
+	minf := box("minf", full("smhd", 0, 0, smhd.Bytes()), box("dinf", full("dref", 0, 0, dref.Bytes())), stbl)
+	mdia := box("mdia", full("mdhd", 0, 0, mdhd.Bytes()), full("hdlr", 0, 0, hdlr.Bytes()), minf)
+	return box("trak", full("tkhd", 0, 3, tkhd.Bytes()), mdia)
 }

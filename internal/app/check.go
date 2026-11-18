@@ -25,6 +25,7 @@ type CheckReport struct {
 	Size    string      `json:"size,omitempty"`
 	FPS     int         `json:"fps,omitempty"`
 	Theme   string      `json:"theme,omitempty"`
+	Voice   string      `json:"voice,omitempty"`
 	Seconds float64     `json:"seconds"` // video length
 	Scenes  []SceneInfo `json:"scenes"`
 	Diags   diag.List   `json:"diagnostics"`
@@ -68,6 +69,9 @@ func CheckIn(src, dir string) CheckReport {
 	}
 	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
 	rep.Seconds = round1(plan.Total)
+	if v.Voice != nil {
+		rep.Voice = strings.TrimSpace(v.Voice.Engine + " " + v.Voice.ID)
+	}
 	for i, s := range v.Scenes {
 		n := 0
 		s.Root.Walk(func(*c.Element) { n++ })
@@ -153,6 +157,9 @@ func (r CheckReport) FormatText(file string) string {
 	if r.OK {
 		for _, s := range r.Scenes {
 			fmt.Fprintf(&b, "  %-16s %5.1fs  from %5.1fs\n", s.Name, s.Seconds, s.Start)
+		}
+		if r.Voice != "" {
+			fmt.Fprintf(&b, "  narration: %s; lengths are estimated until reel render speaks them\n", r.Voice)
 		}
 		fmt.Fprintf(&b, "ok: %d scenes, %.1fs, %s, %d fps, theme %s", len(r.Scenes), r.Seconds, r.Size, r.FPS, r.Theme)
 		if warns > 0 {

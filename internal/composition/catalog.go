@@ -42,7 +42,7 @@ var Props = []string{
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
-	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context",
+	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context", "speak", "model",
 }
 
 // IsVerb reports whether k names a step.

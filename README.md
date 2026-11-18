@@ -19,6 +19,10 @@ make build                      # links x264 statically; needs x264 to build onl
 go test ./...
 ```
 
+Narration: add `voice elevenlabs VOICE_ID` to a script and put
+`ELEVENLABS_API_KEY=…` in a local `.env` (never committed). Every `say` line
+is spoken and the MP4 gets an audio track; `--mute` skips it.
+
 Agents can learn the format from the skill in [skills/reel](skills/reel/SKILL.md).
 The same script renders for 16:9 and 9:16 by changing its `size`.
 

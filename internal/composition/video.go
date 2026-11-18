@@ -16,6 +16,12 @@ type Video struct {
 	Tokens        map[string]string // theme tokens after extends and script overrides
 	Rules         []*Rule           // theme and script rules, in cascade order
 	Scenes        []*Scene
+	Voice         *VoiceSpec // narration voice; nil means captions only
+}
+
+// VoiceSpec is the narration voice a script asks for: `voice ENGINE ID model=…`.
+type VoiceSpec struct {
+	Engine, ID, Model string
 }
 
 // Scene is one shot. Root holds what is on screen, including elements
@@ -38,6 +44,18 @@ type Step struct {
 	Decls  []Decl
 	With   bool // starts together with the previous step
 	Pos    diag.Pos
+
+	// Speech is the narration length in seconds for a say step, filled in
+	// once the voice has spoken it; 0 means it is estimated from the words.
+	Speech float64
+}
+
+// Spoken returns what a say step reads aloud: its speak= text, or its caption.
+func (s Step) Spoken() string {
+	if v, ok := s.Lookup("speak"); ok {
+		return v
+	}
+	return s.Text
 }
 
 // Lookup returns a step declaration value.

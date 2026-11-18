@@ -49,6 +49,13 @@ sequenceDiagram
     Writer->>Writer: Write MP4 on close
 ```
 
+## Narration
+
+When the script has a voice, the lines are spoken before any frame is drawn,
+because their lengths set the timing. After the last frame, the narration is
+mixed, encoded to AAC and added as a second track. See
+[Narrate a video](narrate.md).
+
 ## The output file
 
 H.264 High profile, 4:2:0, BT.709 colour, constant-quality mode (`--crf 18`

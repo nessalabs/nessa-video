@@ -1,10 +1,14 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"image"
 	"io"
+	"math"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +18,7 @@ import (
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/stage"
+	"github.com/nessalabs/nessa-video/internal/voice"
 )
 
 // Videos renders scripts to video. Its adapters are injected: a rasterizer
@@ -26,6 +31,13 @@ type Videos struct {
 	CRF        float64
 	Preset     string
 	Dir        string // where `file=` paths are read from; "" disables files
+
+	// Narration. NewVoice builds the script's voice; EncodeAudio turns the
+	// mixed narration into an audio track. Mute renders captions only.
+	NewVoice    func(spec *c.VoiceSpec) (voice.Voice, error)
+	EncodeAudio func(pcm []int16, rate int) (*encode.Audio, error)
+	Mute        bool
+	Log         func(msg string)
 }
 
 // RenderStats describes a finished render.
@@ -33,6 +45,7 @@ type RenderStats struct {
 	Frames   int
 	Duration time.Duration // length of the video
 	Took     time.Duration // wall time spent
+	Spoken   int           // narrated lines
 }
 
 // Render checks src and writes the encoded video to out. progress, if set,
@@ -45,6 +58,23 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 	}
 	v := rep.video
 	st := &stage.Stage{Tokens: v.Tokens, Measure: vs.Measure, W: v.Width, H: v.Height}
+
+	speech := map[[2]int]voice.Speech{}
+	if v.Voice != nil && !vs.Mute {
+		if vs.NewVoice == nil || vs.EncodeAudio == nil {
+			return RenderStats{}, rep, errors.New("this build cannot narrate; render with --mute")
+		}
+		vo, err := vs.NewVoice(v.Voice)
+		if err != nil {
+			return RenderStats{}, rep, err
+		}
+		if speech, err = speakAll(context.Background(), v, vo, vs.Log); err != nil {
+			return RenderStats{}, rep, err
+		}
+		for k, s := range speech {
+			v.Scenes[k[0]].Steps[k[1]].Speech = s.Seconds()
+		}
+	}
 	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
 	lays := map[*c.Scene]layout.Result{}
 	for _, sp := range plan.Scenes {
@@ -125,9 +155,86 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 			}
 		}
 	}
+	if len(speech) > 0 && firstErr == nil {
+		if sink, ok := enc.(encode.AudioSink); ok {
+			a, err := vs.EncodeAudio(mixNarration(plan, speech), voice.Rate)
+			if err != nil {
+				firstErr = err
+			} else {
+				sink.SetAudio(a)
+			}
+		}
+	}
 	if err := enc.Close(); err != nil && firstErr == nil {
 		firstErr = err
 	}
-	stats := RenderStats{Frames: n, Duration: time.Duration(float64(n) / float64(v.FPS) * float64(time.Second)), Took: time.Since(start)}
+	stats := RenderStats{Frames: n, Duration: time.Duration(float64(n) / float64(v.FPS) * float64(time.Second)), Took: time.Since(start), Spoken: len(speech)}
 	return stats, rep, firstErr
+}
+
+// speakAll narrates every say step, a few at a time.
+func speakAll(ctx context.Context, v *c.Video, vo voice.Voice, log func(string)) (map[[2]int]voice.Speech, error) {
+	type job struct {
+		key  [2]int
+		text string
+	}
+	var jobs []job
+	for i, sc := range v.Scenes {
+		for j, st := range sc.Steps {
+			if st.Verb == "say" {
+				if t := strings.TrimSpace(voice.Plain(st.Spoken())); t != "" {
+					jobs = append(jobs, job{[2]int{i, j}, t})
+				}
+			}
+		}
+	}
+	if log != nil && len(jobs) > 0 {
+		log(fmt.Sprintf("speaking %d lines", len(jobs)))
+	}
+	out := map[[2]int]voice.Speech{}
+	var mu sync.Mutex
+	var firstErr error
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for _, jb := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(jb job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			s, err := vo.Speak(ctx, jb.text)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("narrating %q: %w", jb.text, err)
+				}
+				return
+			}
+			out[jb.key] = s
+		}(jb)
+	}
+	wg.Wait()
+	return out, firstErr
+}
+
+// mixNarration places each spoken line at its cue on one track.
+func mixNarration(p *motion.Plan, speech map[[2]int]voice.Speech) []int16 {
+	n := int(math.Ceil(p.Total * voice.Rate))
+	mix := make([]int32, n)
+	for _, cue := range p.Narration() {
+		s := speech[[2]int{cue.Scene, cue.Step}]
+		at := int(cue.At * voice.Rate)
+		for i, v := range s {
+			if at+i >= n {
+				break
+			}
+			mix[at+i] += int32(v)
+		}
+	}
+	out := make([]int16, n)
+	for i, v := range mix {
+		out[i] = int16(max(-32768, min(32767, v)))
+	}
+	return out
 }

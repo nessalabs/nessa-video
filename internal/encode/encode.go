@@ -77,3 +77,17 @@ func ToI420(img *image.RGBA, f *Frame) {
 		}
 	}
 }
+
+// Audio is an encoded audio track: raw AAC frames plus the decoder config.
+type Audio struct {
+	Rate, Channels  int
+	Config          []byte // AudioSpecificConfig
+	Frames          [][]byte
+	SamplesPerFrame int
+}
+
+// AudioSink is implemented by encoders that can add an audio track. It must
+// be called before Close.
+type AudioSink interface {
+	SetAudio(a *Audio)
+}

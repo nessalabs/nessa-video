@@ -172,6 +172,8 @@ func (r *resolver) video(v *c.Video, n *script.Node) {
 					r.diags.Errorf(a.Pos, "e.g. size 1920x1080 or size 1080x1920 for phones", "bad size %q", a.Text)
 				}
 			}
+		case "voice":
+			r.voice(v, ch)
 		case "fps":
 			if len(ch.Args) > 0 {
 				if n, err := strconv.Atoi(ch.Args[0].Text); err == nil && n > 0 && n <= 120 {
@@ -181,7 +183,7 @@ func (r *resolver) video(v *c.Video, n *script.Node) {
 				}
 			}
 		default:
-			r.diags.Errorf(ch.Pos, "video takes theme, size and fps", "unknown video setting %q", ch.Kind)
+			r.diags.Errorf(ch.Pos, "video takes theme, size, fps and voice", "unknown video setting %q", ch.Kind)
 		}
 	}
 	if v.Width%2 != 0 || v.Height%2 != 0 {
@@ -193,6 +195,35 @@ func (r *resolver) video(v *c.Video, n *script.Node) {
 		}
 		r.diags.Errorf(pos, "use even numbers", "width and height must be even for H.264")
 	}
+}
+
+// voice reads `voice ENGINE ID model=…`.
+func (r *resolver) voice(v *c.Video, n *script.Node) {
+	if len(n.Args) == 0 {
+		r.diags.Errorf(n.Pos, "e.g. voice elevenlabs JBFqnCBsd6RMkjVDRZzb", "voice needs an engine")
+		return
+	}
+	eng := n.Args[0].Text
+	if !r.oneOf(eng, n.Args[0].Pos, []string{"elevenlabs", "silent"}, "voice engine") {
+		return
+	}
+	spec := &c.VoiceSpec{Engine: eng}
+	if len(n.Args) > 1 {
+		spec.ID = n.Args[1].Text
+	}
+	if eng == "elevenlabs" && spec.ID == "" {
+		r.diags.Errorf(n.Pos, "find voice ids in the ElevenLabs voice library, e.g. voice elevenlabs JBFqnCBsd6RMkjVDRZzb", "elevenlabs needs a voice id")
+		return
+	}
+	for _, p := range n.Props {
+		switch p.Key {
+		case "model":
+			spec.Model = p.Value
+		default:
+			r.diags.Errorf(p.Pos, "voice takes model=", "unknown voice setting %q", p.Key)
+		}
+	}
+	v.Voice = spec
 }
 
 var sizeRe = regexp.MustCompile(`^(\d{2,5})x(\d{2,5})$`)

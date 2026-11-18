@@ -69,7 +69,8 @@ display list, so a different drawing library is a new adapter, not a rewrite.
 | Motion | `internal/motion` | The plan: when things enter, change, move and leave |
 | Stage | `internal/stage` | How each kind and state looks, painted into a display list |
 | Render | `internal/render` | Display lists and the rasterizer port and adapters |
-| Encode | `internal/encode` | The encoder port, frame conversion, the MP4 writer and the x264 adapter |
+| Encode | `internal/encode` | The encoder port, frame conversion, the MP4 writer, x264 and AAC adapters |
+| Voice | `internal/voice` | The voice port, the speech cache and the ElevenLabs adapter |
 | Use cases | `internal/app` | Check, explain, still and render |
 | Interface | `cmd/reel` | The command line |
 
@@ -111,3 +112,5 @@ line, so they never import a drawing or video library directly.
 | Pack | A theme: tokens, style rules and components in one theme.reel |
 | Orientation | Landscape or portrait, from the video size; style blocks can target one |
 | Fit | Turning rows and scaling a scene so it fits the frame |
+| Narration | The spoken say lines of a video, mixed onto one audio track |
+| Cue | Where a spoken line starts on the video's timeline |

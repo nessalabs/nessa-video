@@ -24,6 +24,7 @@ diagramLinks:
   Code: show-code
   Data: show-data
   Fit: fit-the-frame
+  Voice: narrate
   Words: domain-language
 ---
 
@@ -48,6 +49,7 @@ flowchart LR
     Motion[Motion] --> Stage
     Stage --> Render[Render frames]
     Render --> Encode[Encode video]
+    Voice[Voice: ElevenLabs] --> Encode
     Words[Shared words]
 ```
 
@@ -67,6 +69,8 @@ defines the terms every page uses.
 - `reel render FILE` renders the whole script to an MP4. `--crf` trades size
   for quality and `--preset` trades speed for size.
 - `reel ref` prints the built-in kinds, steps and properties.
+- `voice elevenlabs VOICE_ID` in a script narrates its `say` lines; see
+  [Narrate a video](narrate.md).
 - `reel themes` lists theme packs and `reel theme export hairline` copies the
   default pack to edit.
 - The same script renders for 16:9 and 9:16; see [Fit the frame](fit-the-frame.md).

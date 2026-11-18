@@ -155,6 +155,11 @@ func (x *Encoder) take(n C.int, out *C.uint8_t, key C.int) error {
 	return nil
 }
 
+// SetAudio adds an AAC track to the MP4; call it before Close.
+func (x *Encoder) SetAudio(a *encode.Audio) {
+	x.mux.SetAudio(&mp4.Audio{Rate: a.Rate, Channels: a.Channels, Config: a.Config, Frames: a.Frames, SamplesPerFrame: a.SamplesPerFrame})
+}
+
 // Close flushes delayed frames and writes the MP4.
 func (x *Encoder) Close() error {
 	if x.enc == nil {
