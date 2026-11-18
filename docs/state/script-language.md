@@ -49,6 +49,13 @@ without a target, `with` on its own and an unclosed ```` ``` ```` block. Each
 report has a line, a column and a hint. Parsing continues after a mistake so
 that one run reports everything.
 
+## Style blocks
+
+`style` holds rules; `style portrait` and `style landscape` hold rules that
+apply only in that orientation. A `tokens` block overrides theme tokens for
+this script. See [Fit the frame](fit-the-frame.md) and
+[Theme packs](theme-packs.md).
+
 ## Selectors
 
 Selectors pick elements in style rules, steps, connectors and the camera.

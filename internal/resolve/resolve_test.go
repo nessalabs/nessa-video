@@ -1,6 +1,7 @@
 package resolve
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -323,7 +324,9 @@ scene s
 		{"video \"t\"\nscene s\n  chart pie\n    a, b\n    1, 2", "unknown chart kind"},
 		{"video \"t\"\nscene s\n  chart\n    a, b\n    x, y", `bad value "y"`},
 		{"video \"t\"\nscene s\n  timeline\n    lane | 5-2 back", "bad span"},
-		{"video \"t\"\nscene s\n  mermaid\n    sequenceDiagram\n    A->>B: hi", "only Mermaid flowcharts"},
+		{"video \"t\"\nscene s\n  mermaid\n    classDiagram\n    A <|-- B", "unsupported Mermaid diagram"},
+		{"video \"t\"\nscene s\n  mermaid\n    sequenceDiagram\n    alt x\n    A->>B: hi", "unclosed frame"},
+		{"video \"t\"\nscene s\n  mermaid\n    sequenceDiagram\n    A says hi", "cannot read"},
 		{"video \"t\"\nscene s\n  mermaid\n    flowchart LR\n    A --> ", "link has no target"},
 		{"video \"t\"\nscene s\n  array #a 1 2\n  swap #a 1", "swap needs"},
 		{"video \"t\"\nscene s\n  array #a 1 2\n  ptr #a lo=x", "bad position"},
@@ -338,5 +341,121 @@ scene s
 		if all := strings.Join(msgs, "\n"); !strings.Contains(all, b.want) {
 			t.Errorf("%q: want %q in:\n%s", b.src, b.want, all)
 		}
+	}
+}
+
+func TestThemePacks(t *testing.T) {
+	files := map[string]string{
+		"themes/brand/theme.reel": "extends hairline\ntokens\n  line-2 #FF5A5F\nstyle\n  box state=focus\ndefine badge\n  box #b\n",
+		"themes/loop/theme.reel":  "extends loop\n",
+		"themes/bad/theme.reel":   "tokens\n  bg #12\nscene x\n",
+	}
+	opt := Options{ReadFile: func(p string) ([]byte, error) {
+		if s, ok := files[p]; ok {
+			return []byte(s), nil
+		}
+		return nil, os.ErrNotExist
+	}}
+
+	res := ScriptWith("video \"t\"\n  theme brand\ntokens\n  hi #FFFFFF\nscene s\n  badge #x\n  laptop #l\n", opt)
+	if len(res.Diags) > 0 {
+		t.Fatalf("diags: %v", res.Diags)
+	}
+	v := res.Video
+	if v.Tokens["line-2"] != "#FF5A5F" || v.Tokens["bg"] != "#08090A" || v.Tokens["hi"] != "#FFFFFF" {
+		t.Fatalf("tokens: line-2=%s bg=%s hi=%s", v.Tokens["line-2"], v.Tokens["bg"], v.Tokens["hi"])
+	}
+	box := c.Select(v.Scenes[0].Root, mustSel(t, "#x/b"))[0]
+	if box.Computed["state"].Value != "focus" {
+		t.Errorf("pack style rule did not apply: %+v", box.Computed["state"])
+	}
+	if len(c.Select(v.Scenes[0].Root, mustSel(t, "#l/screen"))) != 1 {
+		t.Error("components from the extended pack are missing")
+	}
+
+	if res := Script("video \"t\"\nscene s\n  box"); res.Video.Tokens["bg"] != "#08090A" || len(res.Diags) > 0 {
+		t.Errorf("default theme tokens missing: %v", res.Diags)
+	}
+	cases := []struct{ theme, want string }{
+		{"loop", "extends itself"},
+		{"bad", "bad colour"},
+		{"nope", "unknown theme"},
+	}
+	for _, tc := range cases {
+		r := ScriptWith("video \"t\"\n  theme "+tc.theme+"\nscene s\n  box", opt)
+		var msgs []string
+		for _, d := range r.Diags {
+			msgs = append(msgs, d.Error())
+		}
+		if all := strings.Join(msgs, "\n"); !strings.Contains(all, tc.want) {
+			t.Errorf("theme %s: want %q in:\n%s", tc.theme, tc.want, all)
+		}
+	}
+	if r := ScriptWith("video \"t\"\n  theme bad\nscene s\n  box", opt); !strings.Contains(r.Diags.Sorted()[len(r.Diags)-1].Error()+fmt.Sprint(r.Diags), "cannot be in a theme") {
+		t.Errorf("scene in a theme should be refused: %v", r.Diags)
+	}
+}
+
+func TestSequenceDiagram(t *testing.T) {
+	res := Script(`video "t"
+scene s
+  mermaid #seq
+    sequenceDiagram
+      autonumber
+      participant C as Client
+      participant A as API
+      C->>A: GET /items
+      alt cache miss
+        A->>A: load
+      else hit
+        Note over A: cached
+      end
+      A-->>C: 200 OK
+      A-x C: drop
+`)
+	if len(res.Diags) > 0 {
+		t.Fatalf("diags: %v", res.Diags)
+	}
+	sb := c.Select(res.Video.Scenes[0].Root, mustSel(t, "#seq"))[0].Sequence
+	if sb == nil || !sb.Numbered || len(sb.Participants) != 2 || sb.Participants[1] != "API" {
+		t.Fatalf("sequence = %+v", sb)
+	}
+	kinds := ""
+	for _, it := range sb.Items {
+		kinds += it.Kind[:1]
+	}
+	if kinds != "momencmm" {
+		t.Fatalf("item kinds = %s", kinds)
+	}
+	reply, drop := sb.Items[6], sb.Items[7]
+	if !reply.Dashed || !reply.Arrow || reply.From != 1 || reply.To != 0 || !drop.Cross {
+		t.Fatalf("reply = %+v drop = %+v", reply, drop)
+	}
+}
+
+func TestOrientationStyles(t *testing.T) {
+	src := func(size string) string {
+		return "video \"t\"\n  size " + size + "\nstyle landscape\n  #main dir=row\nstyle portrait\n  #main dir=col\n  .wide hidden=true\nscene s\n  col #main\n    box #a\n    box #b .wide\n"
+	}
+	for size, want := range map[string][2]string{"1920x1080": {"row", ""}, "1080x1920": {"col", "true"}} {
+		res := Script(src(size))
+		if len(res.Diags) > 0 {
+			t.Fatalf("%s diags: %v", size, res.Diags)
+		}
+		root := res.Video.Scenes[0].Root
+		if got := c.Select(root, mustSel(t, "#main"))[0].Computed["dir"].Value; got != want[0] {
+			t.Errorf("%s: dir = %q, want %q", size, got, want[0])
+		}
+		if got := c.Select(root, mustSel(t, "#b"))[0].Computed["hidden"].Value; got != want[1] {
+			t.Errorf("%s: hidden = %q, want %q", size, got, want[1])
+		}
+	}
+	r := Script("video \"t\"\nstyle sideways\n  box w=1\nscene s\n  box")
+	if !strings.Contains(fmt.Sprint(r.Diags), "unknown style condition") {
+		t.Errorf("diags = %v", r.Diags)
+	}
+	r = Script("video \"t\"\nstyle portrait\n  box dir=diagonal\nscene s\n  box")
+	if !strings.Contains(fmt.Sprint(r.Diags), "unknown direction") {
+		t.Errorf("rules for the other orientation should still be checked: %v", r.Diags)
 	}
 }

@@ -286,3 +286,167 @@ func (p *painter) mathBlock(e *c.Element, r layout.Rect, cl color.NRGBA, ap moti
 	p.opacity = op
 	p.m = m
 }
+
+// sequenceBlock draws a sequence diagram: participants at the top, dashed
+// lifelines, messages as arrows with labels, notes and alt/opt/loop frames.
+// `play` reveals the rows one after another; otherwise all rows show.
+func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.Appearance) {
+	sb := e.Sequence
+	s := p.s
+	opacity := p.opacity
+	box := p.opt.Type["box"]
+	box.Size = 14
+	lab := p.opt.Type["label"]
+	xOf := func(i int) float64 { return r.X + layout.SeqColumn*(float64(i)+.5) }
+	bottom := r.Bottom() - 8
+
+	p.draw = 1
+	for i, name := range sb.Participants {
+		x := xOf(i)
+		head := layout.Rect{X: x - 68, Y: r.Y, W: 136, H: 38}
+		p.opacity = opacity
+		p.draw = ap.Draw
+		p.stroke(rr(head, 6), lk.line, false)
+		p.stroke(fmt.Sprintf("M%g %gV%g", x, head.Bottom(), bottom), s.col("line-0"), true)
+		p.draw = 1
+		p.opacity = opacity * ap.FillIn
+		p.text(name, x, head.CY()+box.Size*.36, box, lk.text, render.Middle)
+	}
+
+	rows := 0
+	for _, it := range sb.Items {
+		if it.Kind != "close" {
+			rows++
+		}
+	}
+	shown := float64(rows)
+	if pos, ok := p.mo.Playhead(e); ok {
+		shown = pos * float64(rows)
+	} else if _, playing := p.mo.HasPlay(e); playing {
+		shown = 0
+	}
+
+	type frame struct {
+		y      float64
+		lo, hi int
+		label  string
+		elses  []float64
+		labels []string
+	}
+	var stack []*frame
+	y := r.Y + layout.SeqHead
+	row, num := 0, 0
+	widen := func(a, b int) {
+		for _, f := range stack {
+			f.lo, f.hi = min(f.lo, a, b), max(f.hi, a, b)
+		}
+	}
+	for _, it := range sb.Items {
+		vis := clamp01(shown - float64(row))
+		switch it.Kind {
+		case "open":
+			stack = append(stack, &frame{y: y, lo: len(sb.Participants), hi: -1, label: it.Text})
+			if vis > 0 {
+				p.opacity = opacity * ap.FillIn * vis
+			}
+			y += layout.SeqRow
+			row++
+		case "else":
+			if len(stack) > 0 {
+				f := stack[len(stack)-1]
+				f.elses = append(f.elses, y)
+				f.labels = append(f.labels, it.Text)
+			}
+			y += layout.SeqRow
+			row++
+		case "close":
+			if len(stack) == 0 {
+				continue
+			}
+			f := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if f.hi < 0 {
+				f.lo, f.hi = 0, len(sb.Participants)-1
+			}
+			x0, x1 := xOf(f.lo)-80, xOf(f.hi)+80
+			fr := layout.Rect{X: x0, Y: f.y + 6, W: x1 - x0, H: y - f.y - 6}
+			p.opacity = opacity * ap.FillIn
+			p.stroke(rr(fr, 6), s.col("line-1"), false)
+			tw := s.Measure.Measure(f.label, lab.Font, lab.Size)
+			p.fill(rr(layout.Rect{X: x0, Y: fr.Y, W: tw + 20, H: 22}, 5), alpha(s.col("hi"), .06))
+			p.text(f.label, x0+10, fr.Y+15, lab, s.col("ink-2"), render.Start)
+			for k, ey := range f.elses {
+				p.stroke(fmt.Sprintf("M%g %gH%g", x0, ey+6, x1), s.col("line-1"), true)
+				p.text(f.labels[k], x0+10, ey+21, lab, s.col("ink-3"), render.Start)
+			}
+			if len(stack) > 0 {
+				widen(f.lo, f.hi)
+			}
+		case "note":
+			widen(it.From, it.To)
+			if vis > 0 {
+				x0, x1 := xOf(it.From)-70, xOf(it.To)+70
+				if tw := s.Measure.Measure(it.Text, lab.Font, lab.Size) + 28; tw > x1-x0 {
+					mid := (x0 + x1) / 2
+					x0, x1 = mid-tw/2, mid+tw/2
+				}
+				nb := layout.Rect{X: x0, Y: y + 8, W: x1 - x0, H: layout.SeqRow - 14}
+				p.opacity = opacity * ap.FillIn * vis
+				p.fill(rr(nb, 5), s.col("panel"))
+				p.stroke(rr(nb, 5), s.col("line-1"), false)
+				p.text(it.Text, nb.CX(), nb.CY()+4, lab, s.col("ink"), render.Middle)
+			}
+			y += layout.SeqRow
+			row++
+		case "msg":
+			widen(it.From, it.To)
+			num++
+			if vis > 0 {
+				p.opacity = opacity * ap.FillIn
+				cl := s.col("line-1")
+				if vis < 1 {
+					cl = s.col("line-2")
+				}
+				ay := y + layout.SeqRow - 12
+				x0, x1 := xOf(it.From), xOf(it.To)
+				text := it.Text
+				if sb.Numbered {
+					text = strconv.Itoa(num) + ". " + text
+				}
+				p.draw = vis
+				if it.From == it.To {
+					d := fmt.Sprintf("M%g %gH%gV%gH%g", x0, ay-14, x0+44, ay, x0+4)
+					p.stroke(d, cl, it.Dashed)
+					p.draw = 1
+					if vis >= 1 && it.Arrow {
+						p.chevron([2]float64{x0 + 44, ay}, [2]float64{x0 + 4, ay}, cl)
+					}
+					p.text(text, x0+52, ay-4, lab, s.col("ink"), render.Start)
+				} else {
+					dir := 1.0
+					if x1 < x0 {
+						dir = -1
+					}
+					end := x1 - dir*4
+					p.stroke(fmt.Sprintf("M%g %gH%g", x0+dir*4, ay, end), cl, it.Dashed)
+					p.draw = 1
+					if vis >= 1 {
+						if it.Cross {
+							p.stroke(fmt.Sprintf("M%g %gl8 8M%g %gl-8 8", end-4, ay-4, end+4, ay-4), cl, false)
+						} else if it.Arrow {
+							p.chevron([2]float64{x0, ay}, [2]float64{end, ay}, cl)
+						}
+					}
+					p.opacity = opacity * ap.FillIn * clamp01(vis*2-1)
+					p.text(text, (x0+x1)/2, ay-9, lab, s.col("ink"), render.Middle)
+				}
+				p.draw = 1
+			}
+			y += layout.SeqRow
+			row++
+		}
+	}
+	p.opacity = opacity
+}
+
+func clamp01(x float64) float64 { return math.Max(0, math.Min(1, x)) }

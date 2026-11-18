@@ -81,3 +81,39 @@ scene s
 		t.Errorf("paragraph wrapped into %d lines, want at least 2", n)
 	}
 }
+
+func TestFitsTheFrame(t *testing.T) {
+	r := resolve.Script(`video "t"
+scene s
+  row #r gap=20
+    box #a w=400 h=100
+    box #b w=400 h=100
+    box #c w=400 h=100
+`)
+	root := r.Video.Scenes[0].Root
+	// a narrow area turns the row into a column
+	res := Scene(root, Rect{0, 0, 600, 1000}, fixed{}, opts())
+	a, b := box(t, root, res, "#a"), box(t, root, res, "#b")
+	if b.Y <= a.Y || b.X != a.X || res.Fit != 1 {
+		t.Errorf("row should become a column: a=%+v b=%+v fit=%v", a, b, res.Fit)
+	}
+	// too small for either direction: scaled to fit
+	res = Scene(root, Rect{0, 0, 300, 200}, fixed{}, opts())
+	if res.Fit >= 1 || res.Fit <= 0 {
+		t.Errorf("fit = %v, want between 0 and 1", res.Fit)
+	}
+	// an explicit dir is kept
+	r2 := resolve.Script("video \"t\"\nscene s\n  row #r dir=row\n    box w=400 h=100\n    box w=400 h=100\n")
+	root2 := r2.Video.Scenes[0].Root
+	res = Scene(root2, Rect{0, 0, 600, 1000}, fixed{}, opts())
+	if res.Fit >= 1 {
+		t.Errorf("a row with dir=row must stay a row and be scaled instead; fit=%v", res.Fit)
+	}
+	// hidden elements take no space
+	r3 := resolve.Script("video \"t\"\nscene s\n  row #r\n    box w=100 h=40\n    box w=100 h=40 hidden=true\n")
+	root3 := r3.Video.Scenes[0].Root
+	res = Scene(root3, Rect{0, 0, 1000, 1000}, fixed{}, opts())
+	if w := box(t, root3, res, "#r").W; w != 100 {
+		t.Errorf("row width with a hidden child = %v, want 100", w)
+	}
+}

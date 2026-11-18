@@ -16,6 +16,7 @@ import (
 	"github.com/nessalabs/nessa-video/internal/encode"
 	"github.com/nessalabs/nessa-video/internal/encode/x264"
 	"github.com/nessalabs/nessa-video/internal/render/canvas"
+	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
 const usage = `reel turns .reel scripts into explainer videos.
@@ -24,12 +25,16 @@ Usage:
   reel check [--json] [--explain SELECTOR] FILE
   reel still [--scene NAME] [-o PATH] FILE
   reel render [-o OUT.mp4] [--crf N] [--preset NAME] FILE
+  reel themes
+  reel theme export NAME [DIR]
   reel ref
 
 Commands:
   check   Parse and resolve a script; report problems with line numbers.
   still   Render how each scene looks once its steps have run, as PNG.
   render  Render the whole script to an H.264 MP4 video.
+  themes  List the built-in theme packs.
+  theme export  Copy a built-in pack to DIR (default themes/NAME) to edit it.
   ref     Print the built-in kinds, steps and properties.
 `
 
@@ -45,6 +50,16 @@ func main() {
 		os.Exit(still(os.Args[2:]))
 	case "render":
 		os.Exit(renderCmd(os.Args[2:]))
+	case "themes":
+		for _, n := range theme.Names() {
+			def := ""
+			if n == theme.Default {
+				def = " (default)"
+			}
+			fmt.Println(n + def)
+		}
+	case "theme":
+		os.Exit(themeCmd(os.Args[2:]))
 	case "ref":
 		ref()
 	case "-h", "--help", "help":
@@ -244,4 +259,36 @@ func renderCmd(args []string) int {
 func isTerminal() bool {
 	fi, err := os.Stderr.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+func themeCmd(args []string) int {
+	if len(args) < 2 || args[0] != "export" || len(args) > 3 {
+		fmt.Fprintln(os.Stderr, "usage: reel theme export NAME [DIR]")
+		return 2
+	}
+	name := args[1]
+	src, ok := theme.Builtin(name)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "reel: no built-in theme %q; built-in: %s\n", name, strings.Join(theme.Names(), ", "))
+		return 1
+	}
+	dir := filepath.Join("themes", name)
+	if len(args) == 3 {
+		dir = args[2]
+	}
+	path := filepath.Join(dir, "theme.reel")
+	if _, err := os.Stat(path); err == nil {
+		fmt.Fprintf(os.Stderr, "reel: %s already exists; remove it or pick another folder\n", path)
+		return 1
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 1
+	}
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 1
+	}
+	fmt.Printf("%s\nuse it with `theme %s` in a script's video block\n", path, filepath.ToSlash(dir))
+	return 0
 }

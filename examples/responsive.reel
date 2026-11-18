@@ -1,0 +1,53 @@
+video "One script, two shapes"
+  size 1920x1080  fps 30
+
+# The engine fits each scene to the frame. These rules tweak the phone cut.
+style portrait
+  .aside hidden=true
+  #stack dir=col
+
+scene system
+  row #stack gap=72 align=center
+    laptop #web "laptop · web"
+    server #api "server · api-1"
+    terminal #t .aside
+      $ curl -i api.internal/v1/items
+      HTTP/1.1 200 OK
+  #web -> #api "GET /v1/items"
+  say "The same script ==fits both frames=="
+
+scene flow
+  clear
+  mermaid #flow
+    flowchart LR
+      C[Client] --> G[Gateway]
+      G --> H{Cache hit?}
+      H -- yes --> R[Respond]
+      H -- no --> D[(Database)]
+      D --> W[Write cache]
+      W --> R
+  walk #flow C G H D W R
+  say "Wide diagrams turn or shrink to fit"
+
+scene calls
+  clear
+  mermaid #seq
+    sequenceDiagram
+      participant C as Client
+      participant A as API
+      participant D as Database
+      C->>A: GET /items
+      alt cache miss
+        A->>D: SELECT items
+        D-->>A: rows
+      else cache hit
+        Note over A: served from memory
+      end
+      A-->>C: 200 OK
+  play #seq for=3s
+  say "Sequence diagrams ==play message by message=="
+
+scene cost
+  clear
+  math "O(n \log n)"
+  say "Maths now keeps every letter"

@@ -23,6 +23,7 @@ diagramLinks:
   Encode: render-pipeline
   Code: show-code
   Data: show-data
+  Fit: fit-the-frame
   Words: domain-language
 ---
 
@@ -42,7 +43,8 @@ flowchart LR
     Code[Code and diffs] --> Resolve
     Data[Arrays, charts, timelines, diagrams, maths] --> Resolve
     Resolve --> Composition[Scenes and styles]
-    Composition --> Stage[Layout and stage]
+    Composition --> Fit[Fit the frame]
+    Fit --> Stage[Layout and stage]
     Motion[Motion] --> Stage
     Stage --> Render[Render frames]
     Render --> Encode[Encode video]
@@ -65,6 +67,10 @@ defines the terms every page uses.
 - `reel render FILE` renders the whole script to an MP4. `--crf` trades size
   for quality and `--preset` trades speed for size.
 - `reel ref` prints the built-in kinds, steps and properties.
+- `reel themes` lists theme packs and `reel theme export hairline` copies the
+  default pack to edit.
+- The same script renders for 16:9 and 9:16; see [Fit the frame](fit-the-frame.md).
+- An agent skill in `skills/reel` teaches coding agents to write scripts.
 - `go run -tags resvg ./cmd/bench` renders a four-shot storyboard to measure
   drawing speed. It does not read scripts.
 

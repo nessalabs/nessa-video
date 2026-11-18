@@ -8,7 +8,6 @@ import (
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/stage"
-	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
 // Stills renders the final state of scenes to images. The rasterizer and
@@ -34,9 +33,8 @@ func (s Stills) Render(src, only string) ([]Still, CheckReport, error) {
 		return nil, rep, fmt.Errorf("the script has errors; run reel check")
 	}
 	v := rep.video
-	th, _ := theme.Get(v.Theme)
-	st := &stage.Stage{Theme: th, Measure: s.Measure, W: v.Width, H: v.Height}
-	plan := motion.New(v, motion.TimingsFrom(th.Tokens))
+	st := &stage.Stage{Tokens: v.Tokens, Measure: s.Measure, W: v.Width, H: v.Height}
+	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
 	var out []Still
 	for i, sp := range plan.Scenes {
 		sc := sp.Scene

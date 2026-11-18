@@ -42,7 +42,7 @@ func ScriptWith(src string, opt Options) Result {
 	r := &resolver{defs: map[string]*def{}, seqs: map[string]*seq{}, opt: opt}
 	nodes, pd := script.Parse(src)
 	r.diags = append(r.diags, pd...)
-	v := &c.Video{Width: 1920, Height: 1080, FPS: 30, Theme: "hairline"}
+	v := &c.Video{Width: 1920, Height: 1080, FPS: 30, Theme: theme.Default}
 
 	var video *script.Node
 	for _, n := range nodes {
@@ -60,12 +60,23 @@ func ScriptWith(src string, opt Options) Result {
 		r.video(v, video)
 	}
 
-	th, ok := theme.Get(v.Theme)
-	if !ok {
-		r.diags.Errorf(video.Pos, "available: "+strings.Join(theme.Names(), ", "), "unknown theme %q", v.Theme)
-		th, _ = theme.Get("hairline")
+	r.orientation = "landscape"
+	if v.Height > v.Width {
+		r.orientation = "portrait"
 	}
-	r.loadTheme(th)
+	themePos := diag.Pos{Line: 1, Col: 1}
+	if video != nil {
+		themePos = video.Pos
+		for _, ch := range video.Children {
+			if ch.Kind == "theme" {
+				themePos = ch.Pos
+			}
+		}
+	}
+	v.Tokens = map[string]string{}
+	if !r.loadTheme(v.Theme, themePos, v.Tokens, nil) {
+		r.loadTheme(theme.Default, themePos, v.Tokens, nil)
+	}
 
 	for _, n := range nodes { // definitions first, so style rules can name them
 		switch n.Kind {
@@ -78,13 +89,15 @@ func ScriptWith(src string, opt Options) Result {
 	for _, n := range nodes {
 		switch n.Kind {
 		case "video", "define", "sequence":
+		case "tokens":
+			r.tokens(n, v.Tokens)
 		case "style":
 			r.style(n, c.LayerScriptRule)
 		case "import":
 			r.diags.Warnf(n.Pos, "inline the definitions for now", "import is not supported yet")
 		case "scene":
 		default:
-			r.diags.Errorf(n.Pos, hintFor(n.Kind, []string{"video", "style", "define", "sequence", "scene", "import"}),
+			r.diags.Errorf(n.Pos, hintFor(n.Kind, []string{"video", "tokens", "style", "define", "sequence", "scene", "import"}),
 				"%q cannot be at the top level", n.Kind)
 		}
 	}
@@ -125,13 +138,14 @@ type seq struct {
 }
 
 type resolver struct {
-	diags   diag.List
-	defs    map[string]*def
-	seqs    map[string]*seq
-	rules   []*c.Rule
-	depth   int
-	inTheme bool
-	opt     Options
+	diags       diag.List
+	defs        map[string]*def
+	seqs        map[string]*seq
+	rules       []*c.Rule
+	depth       int
+	inTheme     bool
+	opt         Options
+	orientation string // "portrait" or "landscape"
 }
 
 func (r *resolver) video(v *c.Video, n *script.Node) {
@@ -182,18 +196,65 @@ func (r *resolver) video(v *c.Video, n *script.Node) {
 
 var sizeRe = regexp.MustCompile(`^(\d{2,5})x(\d{2,5})$`)
 
-func (r *resolver) loadTheme(th *theme.Theme) {
-	nodes, d := script.Parse(th.Source)
-	file := "theme " + th.Name
+// loadTheme loads a theme pack, and the packs it extends first, into the
+// resolver: its tokens into tokens, its components and its style rules.
+// name is a built-in pack or a folder holding theme.reel, relative to the
+// script. It reports whether the pack was found.
+func (r *resolver) loadTheme(name string, pos diag.Pos, tokens map[string]string, seen []string) bool {
+	for _, s := range seen {
+		if s == name {
+			r.diags.Errorf(pos, "", "theme %q extends itself through %s", name, strings.Join(seen, " -> "))
+			return false
+		}
+	}
+	src, ok := theme.Builtin(name)
+	if !ok {
+		var tried []string
+		for _, path := range themePaths(name) {
+			tried = append(tried, path)
+			if r.opt.ReadFile == nil {
+				break
+			}
+			if b, err := r.opt.ReadFile(path); err == nil {
+				src, ok = string(b), true
+				break
+			}
+		}
+		if !ok {
+			hint := "built-in themes: " + strings.Join(theme.Names(), ", ")
+			if r.opt.ReadFile != nil {
+				hint += "; also looked for " + strings.Join(tried, " and ")
+			}
+			r.diags.Errorf(pos, hint, "unknown theme %q", name)
+			return false
+		}
+	}
+	nodes, d := script.Parse(src)
+	file := "theme " + name
 	script.SetFile(nodes, file)
 	for _, x := range d {
 		x.Pos.File = file
 		r.diags = append(r.diags, x)
 	}
+	for _, n := range nodes { // the base pack comes first, so this one overrides it
+		if n.Kind == "extends" {
+			if len(n.Args) != 1 {
+				r.diags.Errorf(n.Pos, "e.g. extends hairline", "extends needs one theme")
+				continue
+			}
+			r.loadTheme(n.Args[0].Text, n.Pos, tokens, append(seen, name))
+		}
+	}
 	r.inTheme = true
-	for _, n := range nodes { // components first, so style rules can name them
-		if n.Kind == "define" {
+	for _, n := range nodes {
+		switch n.Kind {
+		case "tokens":
+			r.tokens(n, tokens)
+		case "define":
 			r.define(n, true)
+		case "extends", "style":
+		default:
+			r.diags.Errorf(n.Pos, "a theme holds extends, tokens, style and define blocks", "%q cannot be in a theme", n.Kind)
 		}
 	}
 	for _, n := range nodes {
@@ -202,34 +263,84 @@ func (r *resolver) loadTheme(th *theme.Theme) {
 		}
 	}
 	r.inTheme = false
+	return true
+}
+
+// themePaths lists where a theme named on disk may live, relative to the script.
+func themePaths(name string) []string {
+	name = strings.TrimSuffix(strings.TrimSuffix(name, "/"), "/theme.reel")
+	if strings.ContainsAny(name, "/.") {
+		return []string{name + "/theme.reel"}
+	}
+	return []string{"themes/" + name + "/theme.reel", name + "/theme.reel"}
+}
+
+var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// tokens reads `name value` lines into tokens, later blocks overriding earlier ones.
+func (r *resolver) tokens(n *script.Node, tokens map[string]string) {
+	for _, ch := range n.Children {
+		if len(ch.Args) != 1 || len(ch.Props) > 0 {
+			r.diags.Errorf(ch.Pos, "one token per line: `line-2 #D4D7DE`", "bad token line")
+			continue
+		}
+		val := ch.Args[0].Text
+		if strings.HasPrefix(val, "#") && !hexColor.MatchString(val) {
+			r.diags.Errorf(ch.Args[0].Pos, "colours are written #rrggbb", "bad colour %q for %s", val, ch.Kind)
+			continue
+		}
+		tokens[ch.Kind] = val
+	}
 }
 
 func (r *resolver) style(n *script.Node, layer c.Layer) {
-	for _, ch := range n.Children {
-		parts := []string{ch.Kind}
-		for _, a := range ch.Args {
-			if a.Quoted {
-				r.diags.Errorf(a.Pos, "style rules hold a selector and key=value pairs", "unexpected text in a style rule")
-				continue
+	// `style portrait` and `style landscape` apply only in that orientation,
+	// like a CSS media query.
+	if len(n.Args) > 0 {
+		want := n.Args[0].Text
+		if want != "portrait" && want != "landscape" || len(n.Args) > 1 {
+			r.diags.Errorf(n.Pos, "use `style`, `style portrait` or `style landscape`", "unknown style condition %q", want)
+			return
+		}
+		if want != r.orientation {
+			for _, ch := range n.Children { // still check them, so mistakes show in either orientation
+				r.styleRule(ch, layer, true)
 			}
-			parts = append(parts, a.Text)
+			return
 		}
-		src := strings.Join(parts, " ")
-		sel, err := selector.ParseSelector(src)
-		if err != nil {
-			r.diags.Errorf(ch.Pos, "e.g. `process.hot state=focus`", "bad selector %q: %v", src, err)
-			continue
+	}
+	for _, ch := range n.Children {
+		r.styleRule(ch, layer, false)
+	}
+}
+
+// styleRule reads one `selector key=value` line. checkOnly validates without adding the rule.
+func (r *resolver) styleRule(ch *script.Node, layer c.Layer, checkOnly bool) {
+	parts := []string{ch.Kind}
+	for _, a := range ch.Args {
+		if a.Quoted {
+			r.diags.Errorf(a.Pos, "style rules hold a selector and key=value pairs", "unexpected text in a style rule")
+			return
 		}
-		if len(ch.Props) == 0 {
-			r.diags.Warnf(ch.Pos, "add key=value pairs after the selector", "style rule %q sets nothing", src)
-		}
-		r.checkSelectorKinds(sel, ch.Pos)
-		rule := &c.Rule{Selector: sel, Layer: layer, Order: len(r.rules), Pos: ch.Pos}
-		for _, p := range ch.Props {
-			r.checkProp(p.Key, p.Pos, nil)
-			r.checkValue(p.Key, p.Value, p.Pos)
-			rule.Decls = append(rule.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
-		}
+		parts = append(parts, a.Text)
+	}
+	src := strings.Join(parts, " ")
+	sel, err := selector.ParseSelector(src)
+	if err != nil {
+		r.diags.Errorf(ch.Pos, "e.g. `process.hot state=focus`", "bad selector %q: %v", src, err)
+		return
+	}
+	if len(ch.Props) == 0 {
+		r.diags.Warnf(ch.Pos, "add key=value pairs after the selector", "style rule %q sets nothing", src)
+	}
+	r.checkSelectorKinds(sel, ch.Pos)
+	rule := &c.Rule{Selector: sel, Layer: layer, Order: len(r.rules), Pos: ch.Pos}
+	for _, p := range ch.Props {
+		r.checkProp(p.Key, p.Pos, nil)
+		r.checkValue(p.Key, p.Value, p.Pos)
+		rule.Decls = append(rule.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
+	}
+	if !checkOnly {
 		r.rules = append(r.rules, rule)
 	}
 }
@@ -685,6 +796,10 @@ func (r *resolver) checkValue(key, val string, pos diag.Pos) {
 		r.oneOf(val, pos, c.EnterModes, key+" mode")
 	case "state":
 		r.oneOf(val, pos, c.States, "state")
+	case "dir":
+		r.oneOf(val, pos, []string{"row", "col", "LR", "RL", "TD", "TB"}, "direction")
+	case "hidden", "fit":
+		r.oneOf(val, pos, []string{"true", "false"}, key+" value")
 	case "for", "stagger":
 		r.duration(val, pos, false)
 	}

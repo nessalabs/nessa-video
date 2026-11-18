@@ -179,9 +179,13 @@ func (r *resolver) mermaid(e *c.Element, n *script.Node) {
 		r.diags.Errorf(n.Pos, "indent a flowchart under the line", "mermaid block is empty")
 		return
 	}
+	if lines[0] == "sequenceDiagram" {
+		r.sequenceDiagram(e, n, lines[1:])
+		return
+	}
 	m := mmHeader.FindStringSubmatch(lines[0])
 	if m == nil {
-		r.diags.Errorf(n.Pos, "start with `flowchart LR` or `flowchart TD`", "only Mermaid flowcharts are supported; got %q", lines[0])
+		r.diags.Errorf(n.Pos, "start with `flowchart LR`, `flowchart TD` or `sequenceDiagram`", "unsupported Mermaid diagram %q", lines[0])
 		return
 	}
 	dir := m[2]
@@ -325,4 +329,85 @@ func (r *resolver) mermaid(e *c.Element, n *script.Node) {
 
 func partSel(id string) *selector.Selector {
 	return &selector.Selector{Src: "#" + id, Group: []selector.Complex{{Parts: []selector.Compound{{Part: id}}}}}
+}
+
+var (
+	seqParticipant = regexp.MustCompile(`^(participant|actor)\s+([\w-]+)(?:\s+as\s+(.+))?$`)
+	seqMessage     = regexp.MustCompile(`^(\w+(?:-\w+)*)\s*(-->>|->>|-->|->|--x|-x|--\)|-\))\s*[+-]?(\w+(?:-\w+)*)\s*:\s*(.*)$`)
+	seqNote        = regexp.MustCompile(`^(?i:note)\s+(over|left of|right of)\s+([\w-]+)(?:\s*,\s*([\w-]+))?\s*:\s*(.*)$`)
+	seqFrame       = regexp.MustCompile(`^(alt|opt|loop|par|critical|break|else|and)\b\s*(.*)$`)
+)
+
+// sequenceDiagram reads the Mermaid sequence diagram subset reel draws.
+func (r *resolver) sequenceDiagram(e *c.Element, n *script.Node, lines []string) {
+	sb := &c.SequenceBlock{}
+	index := map[string]int{}
+	part := func(id, label string) int {
+		if i, ok := index[id]; ok {
+			if label != "" {
+				sb.Participants[i] = label
+			}
+			return i
+		}
+		if label == "" {
+			label = id
+		}
+		index[id] = len(sb.Participants)
+		sb.Participants = append(sb.Participants, label)
+		return index[id]
+	}
+	depth := 0
+	for i, ln := range lines {
+		pos := diag.Pos{Line: n.Pos.Line + 2 + i, Col: n.Pos.Col + 2}
+		switch {
+		case ln == "autonumber":
+			sb.Numbered = true
+		case ln == "end":
+			if depth == 0 {
+				r.diags.Errorf(pos, "", "`end` without an open alt, opt or loop")
+				continue
+			}
+			depth--
+			sb.Items = append(sb.Items, c.SeqItem{Kind: "close"})
+		case strings.HasPrefix(ln, "activate ") || strings.HasPrefix(ln, "deactivate ") || strings.HasPrefix(ln, "rect "):
+			// accepted and ignored: activation bars and coloured rects are not drawn
+		default:
+			if m := seqParticipant.FindStringSubmatch(ln); m != nil {
+				part(m[2], strings.Trim(strings.TrimSpace(m[3]), `"`))
+			} else if m := seqMessage.FindStringSubmatch(ln); m != nil {
+				op := m[2]
+				sb.Items = append(sb.Items, c.SeqItem{Kind: "msg", From: part(m[1], ""), To: part(m[3], ""), Text: strings.TrimSpace(m[4]),
+					Dashed: strings.HasPrefix(op, "--"), Arrow: strings.Contains(op, ">"), Cross: strings.HasSuffix(op, "x")})
+			} else if m := seqNote.FindStringSubmatch(ln); m != nil {
+				a := part(m[2], "")
+				b := a
+				if m[3] != "" {
+					b = part(m[3], "")
+				}
+				sb.Items = append(sb.Items, c.SeqItem{Kind: "note", From: min(a, b), To: max(a, b), Text: strings.TrimSpace(m[4])})
+			} else if m := seqFrame.FindStringSubmatch(ln); m != nil {
+				if m[1] == "else" || m[1] == "and" {
+					if depth == 0 {
+						r.diags.Errorf(pos, "", "`%s` outside an alt or par", m[1])
+						continue
+					}
+					sb.Items = append(sb.Items, c.SeqItem{Kind: "else", Text: strings.TrimSpace(m[2])})
+				} else {
+					depth++
+					sb.Items = append(sb.Items, c.SeqItem{Kind: "open", Text: strings.TrimSpace(m[1] + " " + m[2])})
+				}
+			} else {
+				r.diags.Errorf(pos, "e.g. `A->>B: Request`, `B-->>A: Reply`, `Note over A: text`, `alt cached` … `end`", "cannot read %q", ln)
+			}
+		}
+	}
+	for ; depth > 0; depth-- {
+		r.diags.Errorf(n.Pos, "close each alt, opt and loop with `end`", "sequence diagram has an unclosed frame")
+		sb.Items = append(sb.Items, c.SeqItem{Kind: "close"})
+	}
+	if len(sb.Participants) == 0 {
+		r.diags.Errorf(n.Pos, "e.g. `A->>B: Request`", "sequence diagram has no participants")
+		return
+	}
+	e.Sequence = sb
 }

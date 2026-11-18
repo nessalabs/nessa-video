@@ -57,3 +57,21 @@ func (t *TimelineBlock) End() float64 {
 	}
 	return m
 }
+
+// SequenceBlock is a Mermaid sequence diagram: participants with lifelines
+// and the messages, notes and frames between them, top to bottom.
+type SequenceBlock struct {
+	Participants []string // labels, left to right
+	Items        []SeqItem
+	Numbered     bool // autonumber
+}
+
+// SeqItem is one row of a sequence diagram.
+type SeqItem struct {
+	Kind     string // "msg", "note", "open", "else", "close"
+	From, To int    // participant indexes; for notes the span
+	Text     string
+	Dashed   bool // a reply, drawn dashed
+	Arrow    bool // has an arrowhead
+	Cross    bool // ends in a cross (-x)
+}

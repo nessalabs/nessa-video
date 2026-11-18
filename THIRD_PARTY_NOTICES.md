@@ -10,6 +10,7 @@ reel includes or links the following software and fonts.
 | x264 | H.264 encoder, linked into the binary | GPL-2.0-or-later |
 | github.com/alecthomas/chroma | Syntax highlighting lexers | MIT |
 | star-tex.org/x/tex | TeX engine for maths | BSD-3-Clause |
+| github.com/tdewolff/font (patched copy in third_party/) | Font parsing for text and maths | MIT |
 | Latin Modern fonts (github.com/go-fonts/latin-modern) | Maths fonts | GUST Font License; Go package BSD-3-Clause |
 | resvg (benchmark only, not in the reel binary) | Comparison rasterizer in `cmd/bench` | Apache-2.0 or MIT |
 

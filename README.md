@@ -19,6 +19,9 @@ make build                      # links x264 statically; needs x264 to build onl
 go test ./...
 ```
 
+Agents can learn the format from the skill in [skills/reel](skills/reel/SKILL.md).
+The same script renders for 16:9 and 9:16 by changing its `size`.
+
 Documentation lives in [docs/state](docs/state/README.md) in the
 [Nessa Docs](https://github.com/nessalabs/nessa-docs) format. The full design,
 including parts not built yet, is in [docs/spec.html](docs/spec.html).

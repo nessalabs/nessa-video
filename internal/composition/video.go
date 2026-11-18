@@ -13,7 +13,8 @@ type Video struct {
 	Width, Height int
 	FPS           int
 	Theme         string
-	Rules         []*Rule // theme and script rules, in cascade order
+	Tokens        map[string]string // theme tokens after extends and script overrides
+	Rules         []*Rule           // theme and script rules, in cascade order
 	Scenes        []*Scene
 }
 

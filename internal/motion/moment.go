@@ -286,3 +286,10 @@ func (m Moment) Playhead(e *c.Element) (float64, bool) {
 	}
 	return clamp((m.T - a.Start) / a.Dur), true
 }
+
+// HasPlay reports whether the element has a play step in this scene, and
+// whether it has not started yet, so content it reveals can stay hidden.
+func (m Moment) HasPlay(e *c.Element) (Anim, bool) {
+	a, ok := m.plan.plays[e]
+	return a, ok && m.T < a.Start
+}

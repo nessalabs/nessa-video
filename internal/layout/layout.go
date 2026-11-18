@@ -48,6 +48,9 @@ const (
 	LaneLabel  = 120.0
 	AxisBand   = 34.0
 	MathSize   = 30.0
+	SeqColumn  = 180.0
+	SeqHead    = 56.0
+	SeqRow     = 44.0
 )
 
 // Type is a font and size for one kind of text.
@@ -68,6 +71,10 @@ type Options struct {
 type Result struct {
 	Boxes map[*c.Element]Rect
 	Lines map[*c.Element][]string // wrapped text lines
+	// Fit scales the whole scene down around the area's centre when it is
+	// still too big after rows and columns have been flipped. 1 means no scaling.
+	Fit     float64
+	Content Rect // the laid-out content before Fit
 }
 
 type engine struct {
@@ -75,16 +82,178 @@ type engine struct {
 	opt  Options
 	size map[*c.Element][2]float64
 	res  Result
+	flip map[*c.Element]bool    // rows and columns turned the other way to fit
+	room map[*c.Element]float64 // minimum gap after a child, to fit a connector label
 }
 
 // Scene lays out root's children as a centred column inside area.
+//
+// The engine fits content to the frame by itself, the way a responsive page
+// does: while the content is too wide, the widest row (or left-to-right
+// diagram) without an explicit `dir` is turned into a column; while it is
+// too tall, the tallest column is turned into a row if that helps. Whatever
+// still does not fit is scaled down. Containers with their own `dir`, or
+// with `fit=false`, keep their direction.
 func Scene(root *c.Element, area Rect, m Measurer, opt Options) Result {
-	e := &engine{m: m, opt: opt, size: map[*c.Element][2]float64{},
-		res: Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}}}
-	w, h := e.measure(root)
+	e := &engine{m: m, opt: opt, flip: map[*c.Element]bool{}, room: map[*c.Element]float64{}}
+	e.labelRoom(root)
+	var w, h float64
+	for round := 0; ; round++ {
+		e.size = map[*c.Element][2]float64{}
+		e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1}
+		w, h = e.measure(root)
+		if round >= 16 || (w <= area.W && h <= area.H) {
+			break
+		}
+		if w > area.W && e.flipWidest(root, area) {
+			continue
+		}
+		if h > area.H && e.flipTallest(root, area) {
+			continue
+		}
+		break
+	}
 	r := Rect{area.X + (area.W-w)/2, area.Y + (area.H-h)/2, w, h}
 	e.place(root, r)
+	e.res.Content = r
+	if w > area.W || h > area.H {
+		e.res.Fit = min(area.W/w, area.H/h)
+	}
 	return e.res
+}
+
+// labelRoom finds connectors with labels whose ends sit in neighbouring
+// children of one container, and records the gap their label needs.
+func (e *engine) labelRoom(root *c.Element) {
+	t := e.opt.Type["label"]
+	root.Walk(func(edge *c.Element) {
+		if edge.Edge == nil || edge.Text == "" || edge.Edge.From == nil || edge.Edge.To == nil {
+			return
+		}
+		scope := root
+		if o := edge.OwnerElement(); o != nil {
+			scope = o
+		}
+		from, to := c.Select(scope, edge.Edge.From), c.Select(scope, edge.Edge.To)
+		if len(from) == 0 || len(to) == 0 {
+			return
+		}
+		need := e.m.Measure(Plain(edge.Text), t.Font, t.Size) + 40
+		// walk up from both ends to the container holding both
+		chain := map[*c.Element]*c.Element{} // ancestor -> its child on the path from `from`
+		for x := from[0]; x.ParentElement() != nil; x = x.ParentElement() {
+			chain[x.ParentElement()] = x
+		}
+		for y := to[0]; y.ParentElement() != nil; y = y.ParentElement() {
+			p := y.ParentElement()
+			a, ok := chain[p]
+			if !ok {
+				continue
+			}
+			ia, ib := a.Index(), y.Index()
+			if ia > ib {
+				ia, ib = ib, ia
+			}
+			if ib-ia == 1 {
+				left := p.Children[ia-1]
+				e.room[left] = max(e.room[left], need)
+			}
+			return
+		}
+	})
+}
+
+// gapAfter is the gap after child ch in a container, widened for a label
+// when the container lays out horizontally.
+func (e *engine) gapAfter(ch *c.Element, gap float64, horizontal bool) float64 {
+	if horizontal {
+		return max(gap, e.room[ch])
+	}
+	return gap
+}
+
+// flexible reports whether the engine may turn el the other way. A `dir`
+// set by a rule or on the element's line is kept; a Mermaid header's
+// direction is only a preference. `fit=false` keeps a container as it is.
+func flexible(el *c.Element) bool {
+	if str(el, "fit", "true") == "false" {
+		return false
+	}
+	v, set := el.Computed["dir"]
+	if !set {
+		return true
+	}
+	return el.Kind() == "mermaid" && v.Origin.Rule == nil && v.Origin.Pos == el.Pos
+}
+
+// flipWidest turns the widest horizontal container wider than the area into
+// a vertical one. It reports whether it changed anything.
+func (e *engine) flipWidest(root *c.Element, area Rect) bool {
+	var best *c.Element
+	var bw float64
+	root.Walk(func(el *c.Element) {
+		if el == root || e.flip[el] || !flexible(el) || !e.horizontal(el) {
+			return
+		}
+		if k := el.Kind(); k != "row" && k != "mermaid" {
+			return
+		}
+		if w := e.size[el][0]; w > area.W && w > bw {
+			best, bw = el, w
+		}
+	})
+	if best == nil {
+		return false
+	}
+	e.flip[best] = true
+	return true
+}
+
+// flipTallest turns the tallest vertical container taller than the area
+// into a horizontal one, when its children would then fit across.
+func (e *engine) flipTallest(root *c.Element, area Rect) bool {
+	var best *c.Element
+	var bh float64
+	root.Walk(func(el *c.Element) {
+		if e.flip[el] || !flexible(el) || e.horizontal(el) {
+			return
+		}
+		if k := el.Kind(); k != "col" && k != "scene" && k != "mermaid" {
+			return
+		}
+		var across float64
+		for _, ch := range el.Children {
+			if inFlow(ch) {
+				across += e.size[ch][0] + e.opt.Gap
+			}
+		}
+		if h := e.size[el][1]; h > area.H && h > bh && across <= area.W {
+			best, bh = el, h
+		}
+	})
+	if best == nil {
+		return false
+	}
+	e.flip[best] = true
+	return true
+}
+
+// horizontal reports whether a container lays its children out in a row.
+func (e *engine) horizontal(el *c.Element) bool {
+	h := el.Kind() == "row"
+	if el.Kind() == "mermaid" {
+		h = false
+	}
+	switch str(el, "dir", "") {
+	case "row", "LR", "RL":
+		h = true
+	case "col", "TD", "TB":
+		h = false
+	}
+	if e.flip[el] {
+		h = !h
+	}
+	return h
 }
 
 // Prop helpers read computed values.
@@ -141,7 +310,9 @@ func Plain(s string) string {
 
 var textKinds = map[string]bool{"title": true, "p": true, "label": true, "metric": true, "code": true}
 
-func inFlow(el *c.Element) bool { return el.Kind() != "edge" && el.Kind() != "use" }
+func inFlow(el *c.Element) bool {
+	return el.Kind() != "edge" && el.Kind() != "use" && str(el, "hidden", "false") != "true"
+}
 
 func (e *engine) measure(el *c.Element) (float64, float64) {
 	w, h := e.intrinsic(el)
@@ -159,9 +330,9 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		if kind == "scene" {
 			gap = num(el, "gap", e.opt.Gap*2)
 		}
-		horizontal := kind == "row"
+		horizontal := e.horizontal(el)
 		var main, cross float64
-		n := 0
+		var prev *c.Element
 		for _, ch := range el.Children {
 			if !inFlow(ch) {
 				continue
@@ -170,6 +341,9 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 			if w == 0 && h == 0 {
 				continue // empty slot or part
 			}
+			if prev != nil {
+				main += e.gapAfter(prev, gap, horizontal)
+			}
 			if horizontal {
 				main += w
 				cross = max(cross, h)
@@ -177,10 +351,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 				main += h
 				cross = max(cross, w)
 			}
-			n++
-		}
-		if n > 1 {
-			main += gap * float64(n-1)
+			prev = ch
 		}
 		if horizontal {
 			return main + 2*pad, cross + 2*pad
@@ -236,6 +407,14 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 			}
 		}
 		return e.opt.BlockSize[0], 80
+	case el.Sequence != nil:
+		rows := 0.0
+		for _, it := range el.Sequence.Items {
+			if it.Kind != "close" {
+				rows++
+			}
+		}
+		return SeqColumn * float64(len(el.Sequence.Participants)), SeqHead + rows*SeqRow + 28
 	case kind == "mermaid":
 		return e.graph(el, nil)
 	case textKinds[kind]:
@@ -322,7 +501,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 	inner := Rect{r.X + pad, r.Y + pad, r.W - 2*pad, r.H - 2*pad}
 	switch {
 	case kind == "row" || kind == "col" || kind == "scene" || !c.IsBuiltinKind(kind):
-		horizontal := kind == "row"
+		horizontal := e.horizontal(el)
 		gap := num(el, "gap", e.opt.Gap)
 		if kind == "scene" {
 			gap = num(el, "gap", e.opt.Gap*2)
@@ -346,8 +525,8 @@ func (e *engine) place(el *c.Element, r Rect) {
 				used += s[1]
 			}
 		}
-		if len(kids) > 1 {
-			used += gap * float64(len(kids)-1)
+		for k := 0; k+1 < len(kids); k++ {
+			used += e.gapAfter(kids[k], gap, horizontal)
 		}
 		pos := inner.X
 		if !horizontal {
@@ -362,10 +541,10 @@ func (e *engine) place(el *c.Element, r Rect) {
 			pos += space / 2
 		case "end":
 			pos += space
-		case "between":
-			if len(kids) > 1 {
-				gap += space / float64(len(kids)-1)
-			}
+		}
+		extra := 0.0
+		if str(el, "justify", "start") == "between" && len(kids) > 1 {
+			extra = space / float64(len(kids)-1)
 		}
 		for _, ch := range kids {
 			s := e.size[ch]
@@ -376,7 +555,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 					h = inner.H
 				}
 				e.place(ch, Rect{pos, y, s[0], h})
-				pos += s[0] + gap
+				pos += s[0] + e.gapAfter(ch, gap, true) + extra
 			} else {
 				x := crossPos(align, inner.X, inner.W, s[0])
 				w := s[0]
@@ -384,7 +563,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 					w = inner.W
 				}
 				e.place(ch, Rect{x, pos, w, s[1]})
-				pos += s[1] + gap
+				pos += s[1] + gap + extra
 			}
 		}
 	case kind == "grid":
@@ -422,7 +601,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 				e.place(ch, Rect{inner.X + num(ch, "x", 0), inner.Y + num(ch, "y", 0), s[0], s[1]})
 			}
 		}
-	case kind == "mermaid":
+	case kind == "mermaid" && el.Sequence == nil:
 		e.graph(el, &inner)
 	}
 }
@@ -430,7 +609,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 // graph sizes (at == nil) or places a Mermaid diagram: ranks become columns
 // for LR and rows for TD, and nodes keep their order within a rank.
 func (e *engine) graph(el *c.Element, at *Rect) (float64, float64) {
-	lr := str(el, "dir", "TD") == "LR" || str(el, "dir", "") == "RL"
+	lr := e.horizontal(el)
 	const rankGap, nodeGap = 80.0, 36.0
 	type rk struct {
 		nodes []*c.Element

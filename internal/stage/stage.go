@@ -18,12 +18,11 @@ import (
 	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/source"
 	"github.com/nessalabs/nessa-video/internal/source/syntax"
-	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
 // Stage paints scenes for one video and theme.
 type Stage struct {
-	Theme   *theme.Theme
+	Tokens  map[string]string // the video's theme tokens
 	Measure layout.Measurer
 	W, H    int // frame size in pixels
 
@@ -40,7 +39,7 @@ func (s *Stage) Design() (w, h, scale float64) {
 }
 
 func (s *Stage) num(token string, def float64) float64 {
-	if v, ok := s.Theme.Tokens[token]; ok {
+	if v, ok := s.Tokens[token]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
 		}
@@ -49,7 +48,7 @@ func (s *Stage) num(token string, def float64) float64 {
 }
 
 func (s *Stage) col(token string) color.NRGBA {
-	v, ok := s.Theme.Tokens[token]
+	v, ok := s.Tokens[token]
 	if !ok {
 		v = token // allow raw #rrggbb values
 	}
@@ -102,7 +101,10 @@ func (s *Stage) Layout(sc *c.Scene) layout.Result {
 // view returns the camera transform that frames target (nil for the stage).
 func (s *Stage) view(lay layout.Result, target *c.Element) (z, cx, cy float64) {
 	area := s.Area()
-	z, cx, cy = 1, area.CX(), area.CY()
+	z, cx, cy = lay.Fit, area.CX(), area.CY()
+	if z == 0 {
+		z = 1
+	}
 	if target == nil {
 		return
 	}
@@ -291,6 +293,9 @@ func (p *painter) blend(from, to string, mix float64) look {
 // so a dimmed component dims its parts; opacity and rise multiply and add
 // down the tree, so a component fading in fades its parts too.
 func (p *painter) element(e *c.Element, inherited string, opacity, rise float64) {
+	if v, ok := e.Computed["hidden"]; ok && v.Value == "true" {
+		return
+	}
 	ap := p.mo.Look(e)
 	opacity *= ap.Opacity
 	if opacity <= 0.002 {
@@ -327,10 +332,12 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		p.chartBlock(e, r, lk, ap)
 	case e.Timeline != nil:
 		p.timelineBlock(e, r, lk, ap)
+	case e.Sequence != nil:
+		p.sequenceBlock(e, r, lk, ap)
 	case kind == "math":
 		p.mathBlock(e, r, textColor, ap)
 	}
-	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && kind != "math" {
+	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && e.Sequence == nil && kind != "math" {
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
 			p.shape(e, r, lk, ap)

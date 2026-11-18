@@ -14,7 +14,6 @@ import (
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/stage"
-	"github.com/nessalabs/nessa-video/internal/theme"
 )
 
 // Videos renders scripts to video. Its adapters are injected: a rasterizer
@@ -45,9 +44,8 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 		return RenderStats{}, rep, errors.New("the script has errors; run reel check")
 	}
 	v := rep.video
-	th, _ := theme.Get(v.Theme)
-	st := &stage.Stage{Theme: th, Measure: vs.Measure, W: v.Width, H: v.Height}
-	plan := motion.New(v, motion.TimingsFrom(th.Tokens))
+	st := &stage.Stage{Tokens: v.Tokens, Measure: vs.Measure, W: v.Width, H: v.Height}
+	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
 	lays := map[*c.Scene]layout.Result{}
 	for _, sp := range plan.Scenes {
 		lays[sp.Scene] = st.Layout(sp.Scene)

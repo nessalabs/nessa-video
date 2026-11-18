@@ -1,6 +1,61 @@
 # Hairline: near-black ground, 1px grey lines, one grey accent.
-# Components are ordinary `define` blocks built from primitives, so a theme
-# pack can redraw a laptop without touching the engine.
+#
+# This is reel's default theme pack. A pack is one file written in the script
+# language: tokens set colours, sizes and timings; style sets defaults per
+# kind; define blocks draw components from primitives. Copy it with
+# `reel theme export hairline`, change what you like, and point a script at
+# it with `theme ./themes/hairline`, or start a new pack with
+# `extends hairline` and override only what differs.
+
+tokens
+  # ground, ink and lines
+  bg            #08090A
+  panel         #0B0C0E
+  ink           #EDEDEF
+  hi            #F4F5F7
+  ink-2         #9BA0AB
+  ink-3         #8A8F98
+  ink-dim       #5A5E68
+  title-ink     #7D828C
+  line-0        #34373F
+  line-1        #6A6E7A
+  line-2        #D4D7DE
+  stroke        1.2
+  radius        8
+
+  # type, in design units (the frame's short side is 720)
+  design-short-side  720
+  size-title    40
+  size-p        18
+  size-label    13
+  size-code     15
+  size-box      15
+  size-metric   40
+  size-math     30
+  size-caption  20
+  gap           24
+
+  # code
+  syntax-plain        #D5D7DE
+  syntax-keyword      #B9AEF0
+  syntax-type         #8FCFDD
+  syntax-function     #E8D3A2
+  syntax-string       #A9D8B8
+  syntax-number       #E6B08F
+  syntax-comment      #6A6E7A
+  syntax-punctuation  #8A8F98
+  diff-add      #5FD39B
+  diff-del      #F2777B
+
+  # motion, in seconds
+  motion-draw     0.6
+  motion-fade     0.35
+  motion-rise     0.45
+  motion-state    0.3
+  motion-camera   0.7
+  motion-send     0.8
+  motion-stagger  0.15
+  motion-hold     1.0
 
 style
   *          enter=fade exit=fade state=rest
@@ -20,7 +75,8 @@ style
   process/name  font=sans-500 size=16 color=ink
   process/note  color=ink-3
 
-# Component parts are drawn by kind; tokens below are read by the stage.
+# Components. Parts named with #name can be targeted from scripts, for
+# example #api/unit1 or #api/procs.
 
 define laptop
   col #device gap=6

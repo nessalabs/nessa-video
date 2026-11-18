@@ -173,9 +173,9 @@ func (c *Canvas) Typeset(tex string, size float64) (string, float64, float64, er
 }
 
 // texCompat maps common LaTeX commands to plain TeX ones the engine knows.
+// Operators such as \log are plain TeX already and keep their spacing.
 func texCompat(s string) string {
 	return strings.NewReplacer(
 		`\mathrm{`, `{\rm `, `\text{`, `{\rm `, `\mathbf{`, `{\bf `, `\mathit{`, `{\it `,
-		`\log`, `{\rm log}`, `\ln`, `{\rm ln}`, `\max`, `{\rm max}`, `\min`, `{\rm min}`,
 	).Replace(s)
 }

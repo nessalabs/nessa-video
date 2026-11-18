@@ -93,7 +93,31 @@ node. A link that skips ranks goes over the boxes between its ends.
 
 Because nodes are parts, `#flow/H` targets one node with any step, and
 `walk #flow C G H D` lights each node and the link into it in order.
-Sequence diagrams and subgraphs are not supported yet; `reel check` says so.
+Subgraphs are not supported yet.
+
+Sequence diagrams are drawn too:
+
+```text
+mermaid #seq
+  sequenceDiagram
+    participant C as Client
+    C->>A: GET /items
+    alt cache miss
+      A->>D: SELECT items
+      D-->>A: rows
+    else cache hit
+      Note over A: served from memory
+    end
+    A-->>C: 200 OK
+play #seq for=3s
+```
+
+Participants get boxes and dashed lifelines. `->>` is a call, `-->>` a dashed
+reply, `-x` a lost message, and a message to yourself loops back. `Note over`,
+`left of` and `right of` add notes; `alt`, `else`, `opt`, `loop`, `par` and
+`critical` draw labelled frames. `autonumber` numbers the messages. `play`
+reveals the rows one after another; without it everything shows once the
+diagram has entered.
 
 ## Maths
 
@@ -108,7 +132,4 @@ outlines, so they take theme colours and fade like text. Backslashes on a
 
 ## Known gaps
 
-- Some roman letters, such as the g in `\log`, are missing from the maths
-  font, so `log` currently shows as "lo".
-- A wide diagram is not scaled down to fit a 9:16 frame.
 - The maths engine adds about 7 MB to the binary.

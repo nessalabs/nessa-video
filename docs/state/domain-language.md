@@ -107,3 +107,7 @@ line, so they never import a drawing or video library directly.
 | Mark | A step that moves the focus to other lines or cells |
 | Pointer | A named index shown above an array cell |
 | Rank | A Mermaid node's column (LR) or row (TD), by longest path from a start |
+| Token | A named colour, size or timing a theme pack sets |
+| Pack | A theme: tokens, style rules and components in one theme.reel |
+| Orientation | Landscape or portrait, from the video size; style blocks can target one |
+| Fit | Turning rows and scaling a scene so it fits the frame |
