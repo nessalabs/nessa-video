@@ -297,13 +297,20 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 	box := p.opt.Type["box"]
 	box.Size = 14
 	lab := p.opt.Type["label"]
-	xOf := func(i int) float64 { return r.X + layout.SeqColumn*(float64(i)+.5) }
+	xs := p.lay.SeqX[e]
+	xOf := func(i int) float64 {
+		if i < len(xs) {
+			return r.X + xs[i]
+		}
+		return r.X + layout.SeqColumn*(float64(i)+.5)
+	}
 	bottom := r.Bottom() - 8
 
 	p.draw = 1
 	for i, name := range sb.Participants {
 		x := xOf(i)
-		head := layout.Rect{X: x - 68, Y: r.Y, W: 136, H: 38}
+		hw := layout.SeqHeadWidth(s.Measure, name, box)
+		head := layout.Rect{X: x - hw/2, Y: r.Y, W: hw, H: 38}
 		p.opacity = opacity
 		p.draw = ap.Draw
 		p.stroke(rr(head, 6), lk.line, false)
@@ -332,6 +339,7 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 		label  string
 		elses  []float64
 		labels []string
+		x0, x1 float64 // extra width needed by notes inside
 	}
 	var stack []*frame
 	y := r.Y + layout.SeqHead
@@ -368,7 +376,10 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 			if f.hi < 0 {
 				f.lo, f.hi = 0, len(sb.Participants)-1
 			}
-			x0, x1 := xOf(f.lo)-80, xOf(f.hi)+80
+			x0, x1 := xOf(f.lo)-72, xOf(f.hi)+72
+			if f.x1 > f.x0 {
+				x0, x1 = math.Min(x0, f.x0-12), math.Max(x1, f.x1+12)
+			}
 			fr := layout.Rect{X: x0, Y: f.y + 6, W: x1 - x0, H: y - f.y - 6}
 			p.opacity = opacity * ap.FillIn
 			p.stroke(rr(fr, 6), s.col("line-1"), false)
@@ -381,6 +392,12 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 			}
 			if len(stack) > 0 {
 				widen(f.lo, f.hi)
+				up := stack[len(stack)-1]
+				if up.x1 <= up.x0 {
+					up.x0, up.x1 = x0, x1
+				} else {
+					up.x0, up.x1 = math.Min(up.x0, x0), math.Max(up.x1, x1)
+				}
 			}
 		case "note":
 			widen(it.From, it.To)
@@ -389,6 +406,13 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 				if tw := s.Measure.Measure(it.Text, lab.Font, lab.Size) + 28; tw > x1-x0 {
 					mid := (x0 + x1) / 2
 					x0, x1 = mid-tw/2, mid+tw/2
+				}
+				for _, f := range stack {
+					if f.x1 <= f.x0 {
+						f.x0, f.x1 = x0, x1
+					} else {
+						f.x0, f.x1 = math.Min(f.x0, x0), math.Max(f.x1, x1)
+					}
 				}
 				nb := layout.Rect{X: x0, Y: y + 8, W: x1 - x0, H: layout.SeqRow - 14}
 				p.opacity = opacity * ap.FillIn * vis

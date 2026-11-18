@@ -4,6 +4,7 @@
 package layout
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -75,6 +76,8 @@ type Result struct {
 	// still too big after rows and columns have been flipped. 1 means no scaling.
 	Fit     float64
 	Content Rect // the laid-out content before Fit
+	// SeqX holds each sequence diagram's lifeline positions, from its left edge.
+	SeqX map[*c.Element][]float64
 }
 
 type engine struct {
@@ -100,7 +103,7 @@ func Scene(root *c.Element, area Rect, m Measurer, opt Options) Result {
 	var w, h float64
 	for round := 0; ; round++ {
 		e.size = map[*c.Element][2]float64{}
-		e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1}
+		e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}}
 		w, h = e.measure(root)
 		if round >= 16 || (w <= area.W && h <= area.H) {
 			break
@@ -414,7 +417,8 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 				rows++
 			}
 		}
-		return SeqColumn * float64(len(el.Sequence.Participants)), SeqHead + rows*SeqRow + 28
+		w := e.sequenceColumns(el)
+		return w, SeqHead + rows*SeqRow + 28
 	case kind == "mermaid":
 		return e.graph(el, nil)
 	case kind == "metric":
@@ -711,3 +715,83 @@ func (e *engine) codePanel(el *c.Element) (float64, float64) {
 
 // Untab expands tabs to four spaces for display.
 func Untab(s string) string { return strings.ReplaceAll(s, "\t", "    ") }
+
+// SeqHeadWidth is the width of a participant's box for its label.
+func SeqHeadWidth(m Measurer, label string, t Type) float64 {
+	return max(136, m.Measure(label, t.Font, t.Size)+36)
+}
+
+// sequenceColumns places a sequence diagram's lifelines the way Mermaid
+// does: each gap between neighbours is wide enough for the participant
+// boxes and for the longest message or note that crosses it, so labels
+// never run over lifelines. It records the positions and returns the width.
+func (e *engine) sequenceColumns(el *c.Element) float64 {
+	sb := el.Sequence
+	n := len(sb.Participants)
+	lab := e.opt.Type["label"]
+	head := e.opt.Type["box"]
+	head.Size = 14
+	text := func(s string) float64 { return e.m.Measure(s, lab.Font, lab.Size) }
+	hw := make([]float64, n)
+	for i, p := range sb.Participants {
+		hw[i] = SeqHeadWidth(e.m, p, head)
+	}
+	gaps := make([]float64, max(n-1, 0))
+	for i := range gaps {
+		gaps[i] = max(SeqColumn, (hw[i]+hw[i+1])/2+32)
+	}
+	left, right := max(hw[0]/2, 84), max(hw[n-1]/2, 84)
+	num := 0
+	for _, it := range sb.Items {
+		switch it.Kind {
+		case "msg":
+			num++
+			label := it.Text
+			if sb.Numbered {
+				label = fmt.Sprintf("%d. %s", num, label)
+			}
+			need := text(label)
+			if it.From == it.To { // a self call loops out to the right
+				room := need + 72
+				if it.From < n-1 {
+					gaps[it.From] = max(gaps[it.From], room)
+				} else {
+					right = max(right, room)
+				}
+				continue
+			}
+			a, b := min(it.From, it.To), max(it.From, it.To)
+			span := 0.0
+			for k := a; k < b; k++ {
+				span += gaps[k]
+			}
+			if extra := need + 56 - span; extra > 0 {
+				for k := a; k < b; k++ {
+					gaps[k] += extra / float64(b-a)
+				}
+			}
+		case "note":
+			w := text(it.Text) + 40
+			if it.From == it.To {
+				half := w/2 + 16
+				if it.From > 0 {
+					gaps[it.From-1] = max(gaps[it.From-1], half+hw[it.From-1]/2)
+				} else {
+					left = max(left, half)
+				}
+				if it.From < n-1 {
+					gaps[it.From] = max(gaps[it.From], half+hw[it.From+1]/2)
+				} else {
+					right = max(right, half)
+				}
+			}
+		}
+	}
+	xs := make([]float64, n)
+	xs[0] = left
+	for i := 1; i < n; i++ {
+		xs[i] = xs[i-1] + gaps[i-1]
+	}
+	e.res.SeqX[el] = xs
+	return xs[n-1] + right
+}
