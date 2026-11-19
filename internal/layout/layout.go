@@ -5,6 +5,8 @@ package layout
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -52,7 +54,19 @@ const (
 	SeqColumn  = 180.0
 	SeqHead    = 56.0
 	SeqRow     = 44.0
+	SeqFrame   = 30.0 // a frame's opening or else line: room for its tab
 )
+
+// SeqRowHeight is the height of one sequence diagram item.
+func SeqRowHeight(kind string) float64 {
+	switch kind {
+	case "close":
+		return 0
+	case "open", "else":
+		return SeqFrame
+	}
+	return SeqRow
+}
 
 // Type is a font and size for one kind of text.
 type Type struct {
@@ -430,14 +444,12 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		}
 		return e.opt.BlockSize[0], 80
 	case el.Sequence != nil:
-		rows := 0.0
+		h := SeqHead + 28
 		for _, it := range el.Sequence.Items {
-			if it.Kind != "close" {
-				rows++
-			}
+			h += SeqRowHeight(it.Kind)
 		}
 		w := e.sequenceColumns(el)
-		return w, SeqHead + rows*SeqRow + 28
+		return w, h
 	case kind == "mermaid":
 		return e.graph(el, nil)
 	case kind == "metric":
@@ -679,41 +691,117 @@ func (e *engine) place(el *c.Element, r Rect) {
 // for LR and rows for TD, and nodes keep their order within a rank.
 func (e *engine) graph(el *c.Element, at *Rect) (float64, float64) {
 	lr := e.horizontal(el)
-	const rankGap, nodeGap = 80.0, 36.0
+	rankGap, nodeGap := 72.0, 36.0
+	if lr {
+		rankGap = 112 // room for a label on each link's last run
+	}
 	type rk struct {
 		nodes []*c.Element
 		main  float64 // size along the rank direction (column width for LR)
-		cross float64 // total size across
 	}
 	var ranks []*rk
+	sizes := map[*c.Element][2]float64{}
 	for _, ch := range el.Children {
 		if !inFlow(ch) {
 			continue
 		}
 		w, h := e.measure(ch)
+		sizes[ch] = [2]float64{w, h}
 		ri := int(num(ch, "rank", 0))
 		for len(ranks) <= ri {
 			ranks = append(ranks, &rk{})
 		}
 		r := ranks[ri]
 		r.nodes = append(r.nodes, ch)
-		along, across := h, w
+		along := h
 		if lr {
-			along, across = w, h
+			along = w
 		}
 		r.main = max(r.main, along)
-		if len(r.nodes) > 1 {
-			r.cross += nodeGap
-		}
-		r.cross += across
 	}
-	var total, crossMax float64
+	across := func(n *c.Element) float64 {
+		if lr {
+			return sizes[n][1]
+		}
+		return sizes[n][0]
+	}
+	// a node's parents, from the diagram's links
+	parents := map[*c.Element][]*c.Element{}
+	for _, ch := range el.Children {
+		if ch.Edge == nil || ch.Edge.From == nil || ch.Edge.To == nil {
+			continue
+		}
+		from, to := c.Select(el, ch.Edge.From), c.Select(el, ch.Edge.To)
+		if len(from) > 0 && len(to) > 0 {
+			parents[to[0]] = append(parents[to[0]], from[0])
+		}
+	}
+	// Place each rank across the flow: a node sits level with the middle of
+	// its parents where it can, so a chain stays one straight line, and
+	// siblings spread evenly around their parent.
+	mid := map[*c.Element]float64{}
+	for ri, r := range ranks {
+		want := make([]float64, len(r.nodes))
+		total := -nodeGap
+		for _, n := range r.nodes {
+			total += across(n) + nodeGap
+		}
+		pos := -total / 2
+		for i, n := range r.nodes { // default: centred as a group
+			want[i] = pos + across(n)/2
+			pos += across(n) + nodeGap
+		}
+		if ri > 0 {
+			for i, n := range r.nodes {
+				var ps, pc float64
+				for _, p := range parents[n] {
+					if m, ok := mid[p]; ok {
+						ps += m
+						pc++
+					}
+				}
+				if pc > 0 {
+					want[i] = ps / pc
+				}
+			}
+			// spread siblings that want the same place, keeping their middle
+			order := make([]int, len(r.nodes))
+			for i := range order {
+				order[i] = i
+			}
+			sort.SliceStable(order, func(a, b int) bool { return want[order[a]] < want[order[b]] })
+			placed := make([]float64, len(r.nodes))
+			edge := math.Inf(-1)
+			for _, i := range order {
+				lo := want[i] - across(r.nodes[i])/2
+				lo = max(lo, edge)
+				placed[i] = lo + across(r.nodes[i])/2
+				edge = lo + across(r.nodes[i]) + nodeGap
+			}
+			var shift, k float64
+			for i := range order {
+				shift += want[i] - placed[i]
+				k++
+			}
+			for i := range placed {
+				want[i] = placed[i] + shift/k
+			}
+		}
+		for i, n := range r.nodes {
+			mid[n] = want[i]
+		}
+	}
+	lo, hi := math.Inf(1), math.Inf(-1)
+	for n, m := range mid {
+		lo, hi = min(lo, m-across(n)/2), max(hi, m+across(n)/2)
+	}
+	crossMax := max(0, hi-lo)
+	var total float64
 	for i, r := range ranks {
 		if i > 0 {
 			total += rankGap
 		}
 		total += r.main
-		crossMax = max(crossMax, r.cross)
 	}
 	if at == nil {
 		if lr {
@@ -723,15 +811,13 @@ func (e *engine) graph(el *c.Element, at *Rect) (float64, float64) {
 	}
 	pos := 0.0
 	for _, r := range ranks {
-		off := (crossMax - r.cross) / 2
 		for _, ch := range r.nodes {
 			s := e.size[ch]
+			off := mid[ch] - lo - across(ch)/2
 			if lr {
 				e.place(ch, Rect{at.X + pos + (r.main-s[0])/2, at.Y + off, s[0], s[1]})
-				off += s[1] + nodeGap
 			} else {
 				e.place(ch, Rect{at.X + off, at.Y + pos + (r.main-s[1])/2, s[0], s[1]})
-				off += s[0] + nodeGap
 			}
 		}
 		pos += r.main + rankGap

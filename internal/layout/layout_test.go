@@ -162,3 +162,24 @@ func mustSel(t *testing.T, s string) *selector.Selector {
 	}
 	return sel
 }
+
+// A chain in a flowchart stays on one line; siblings straddle their parent.
+func TestFlowchartAlignsWithParents(t *testing.T) {
+	r := resolve.Script("video \"t\"\nscene s\n  mermaid #f\n    flowchart LR\n      A[a] --> B{b}\n      B -- x --> C[c]\n      B -- y --> D[d]\n      D --> E[e]\n")
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	root := r.Video.Scenes[0].Root
+	res := Scene(root, Rect{0, 0, 4000, 2000}, fixed{}, opts())
+	a, b := box(t, root, res, "#f/A"), box(t, root, res, "#f/B")
+	c, d, e := box(t, root, res, "#f/C"), box(t, root, res, "#f/D"), box(t, root, res, "#f/E")
+	if a.CY() != b.CY() {
+		t.Errorf("a (%v) and b (%v) should share a centre line", a.CY(), b.CY())
+	}
+	if d.CY() != e.CY() {
+		t.Errorf("d (%v) and e (%v) should share a centre line", d.CY(), e.CY())
+	}
+	if mid := (c.CY() + d.CY()) / 2; mid < b.CY()-1 || mid > b.CY()+1 {
+		t.Errorf("c and d should straddle b: c=%v d=%v b=%v", c.CY(), d.CY(), b.CY())
+	}
+}

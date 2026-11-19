@@ -558,34 +558,70 @@ func (p *painter) route(sc *c.Scene, e *c.Element) [][2]float64 {
 	if !okA || !okB {
 		return nil
 	}
-	const gap = 8.0
 	if pts := p.detour(fromEls[0], toEls[0], a, b); pts != nil {
 		return pts
 	}
+	return orthogonal(fromEls[0].Kind(), toEls[0].Kind(), a, b)
+}
+
+// pointed kinds meet a connector only at the tips on their centre lines.
+func pointed(kind string) bool { return kind == "decision" || kind == "circle" }
+
+// orthogonal routes a connector with straight segments only. Two shapes
+// that face each other get one straight line, taken through both centres
+// when they nearly line up, or through their shared band when both are
+// flat-sided and the band is generous. Otherwise the line leaves the
+// source's centre line, turns once and enters the target's centre
+// line, so it always starts and ends on an outline, never in empty space.
+// The turn comes soon after the source, so links that fan out of one node
+// share a short trunk and each keeps a long final run for its label.
+func orthogonal(ka, kb string, a, b layout.Rect) [][2]float64 {
+	const gap, bend = 8.0, 24.0
+	flat := !pointed(ka) && !pointed(kb)
+	apartX := a.Right() <= b.X || b.Right() <= a.X
+	apartY := a.Bottom() <= b.Y || b.Bottom() <= a.Y
 	top, bot := math.Max(a.Y, b.Y), math.Min(a.Bottom(), b.Bottom())
 	left, right := math.Max(a.X, b.X), math.Min(a.Right(), b.Right())
-	switch {
-	case top < bot:
-		y := (top + bot) / 2
+	sx := func() (float64, float64) {
 		if a.CX() < b.CX() {
-			return [][2]float64{{a.Right() + gap, y}, {b.X - gap, y}}
+			return a.Right() + gap, b.X - gap
 		}
-		return [][2]float64{{a.X - gap, y}, {b.Right() + gap, y}}
-	case left < right:
-		x := (left + right) / 2
+		return a.X - gap, b.Right() + gap
+	}
+	sy := func() (float64, float64) {
 		if a.CY() < b.CY() {
-			return [][2]float64{{x, a.Bottom() + gap}, {x, b.Y - gap}}
+			return a.Bottom() + gap, b.Y - gap
 		}
-		return [][2]float64{{x, a.Y - gap}, {x, b.Bottom() + gap}}
-	default:
-		var x1, x2 float64
-		if a.CX() < b.CX() {
-			x1, x2 = a.Right()+gap, b.X-gap
-		} else {
-			x1, x2 = a.X-gap, b.Right()+gap
-		}
-		mx := (x1 + x2) / 2
+		return a.Y - gap, b.Bottom() + gap
+	}
+	switch {
+	case apartX && math.Abs(a.CY()-b.CY()) <= 4:
+		x1, x2 := sx()
+		y := (a.CY() + b.CY()) / 2
+		return [][2]float64{{x1, y}, {x2, y}}
+	case apartY && math.Abs(a.CX()-b.CX()) <= 4:
+		y1, y2 := sy()
+		x := (a.CX() + b.CX()) / 2
+		return [][2]float64{{x, y1}, {x, y2}}
+	case apartX && flat && bot-top >= 0.6*math.Min(a.H, b.H):
+		x1, x2 := sx()
+		y := (top + bot) / 2
+		return [][2]float64{{x1, y}, {x2, y}}
+	case apartY && flat && right-left >= 0.6*math.Min(a.W, b.W):
+		y1, y2 := sy()
+		x := (left + right) / 2
+		return [][2]float64{{x, y1}, {x, y2}}
+	case apartX:
+		x1, x2 := sx()
+		mx := x1 + math.Copysign(math.Min(bend, math.Abs(x2-x1)/2), x2-x1)
 		return [][2]float64{{x1, a.CY()}, {mx, a.CY()}, {mx, b.CY()}, {x2, b.CY()}}
+	case apartY:
+		y1, y2 := sy()
+		my := y1 + math.Copysign(math.Min(bend, math.Abs(y2-y1)/2), y2-y1)
+		return [][2]float64{{a.CX(), y1}, {a.CX(), my}, {b.CX(), my}, {b.CX(), y2}}
+	default: // overlapping shapes: join the nearest sides
+		x1, x2 := sx()
+		return [][2]float64{{x1, a.CY()}, {x2, b.CY()}}
 	}
 }
 
