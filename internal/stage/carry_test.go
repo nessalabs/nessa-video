@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/nessalabs/nessa-video/internal/motion"
+	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/resolve"
 )
 
@@ -48,5 +49,40 @@ scene two
 	}
 	if ptrs := sp.At(0).Pointers(log); len(ptrs) != 1 || ptrs[0].Pos != 2 {
 		t.Errorf("pointer should stay where scene one left it: %+v", ptrs)
+	}
+}
+
+// When a diagram leaves, its connectors and their labels fade with it.
+func TestConnectorsLeaveWithTheirDiagram(t *testing.T) {
+	r := resolve.Script(`video "t"
+scene one
+  mermaid #f
+    flowchart LR
+      A[a] -- go --> B[b]
+scene two
+  clear
+  box "next"
+`)
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	p := motion.New(r.Video, motion.DefaultTimings())
+	st := &Stage{Measure: mono{}, W: 1280, H: 720}
+	lays := st.Layouts(p)
+	one := p.Scenes[0]
+	full := st.Frame(one.Scene, lays[one.Scene], one.At(one.Dur-0.5))
+	gone := st.Frame(one.Scene, lays[one.Scene], one.At(one.Dur-0.01))
+	maxA := func(l *render.List) uint8 {
+		var m uint8
+		for _, op := range l.Ops {
+			m = max(m, op.Stroke.A, op.Fill.A, op.Color.A)
+		}
+		return m
+	}
+	if maxA(full) < 100 {
+		t.Fatalf("the diagram should be visible before it leaves")
+	}
+	if a := maxA(gone); a > 40 {
+		t.Errorf("something is still drawn at alpha %d as the diagram leaves", a)
 	}
 }

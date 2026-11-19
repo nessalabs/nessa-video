@@ -16,6 +16,7 @@ import (
 	"github.com/nessalabs/nessa-video/internal/layout"
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
+	"github.com/nessalabs/nessa-video/internal/selector"
 	"github.com/nessalabs/nessa-video/internal/source"
 	"github.com/nessalabs/nessa-video/internal/source/syntax"
 )
@@ -700,6 +701,22 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 		return
 	}
 	ap := p.mo.Look(e)
+	// a connector fades with what holds it and with its ends, which are
+	// drawn in another pass and fade on their own
+	ap.Opacity *= p.held(e.OwnerElement())
+	ends := 1.0
+	for _, sel := range []*selector.Selector{e.Edge.From, e.Edge.To} {
+		scope := sc.Root
+		if o := e.OwnerElement(); o != nil {
+			scope = o
+		}
+		if sel != nil {
+			if els := c.Select(scope, sel); len(els) > 0 {
+				ends = math.Min(ends, p.mo.Look(els[0]).Opacity) // its own fade; the holder's is above
+			}
+		}
+	}
+	ap.Opacity *= ends
 	if ap.Opacity <= 0.002 {
 		return
 	}
@@ -1129,4 +1146,14 @@ func (p *painter) glideOf(e *c.Element, sc *c.Scene) (render.Affine, bool) {
 		}
 	}
 	return render.Affine{}, false
+}
+
+// held returns the opacity e and the elements holding it give whatever
+// they contain: entering and leaving fade everything inside.
+func (p *painter) held(e *c.Element) float64 {
+	op := 1.0
+	for x := e; x != nil; x = x.ParentElement() {
+		op *= p.mo.Look(x).Opacity
+	}
+	return op
 }
