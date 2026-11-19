@@ -107,7 +107,7 @@ A clean script is also checked against what research on narrated diagrams
 says people can follow (cited in `skills/reel/references/explaining.md`).
 These are warnings, never errors:
 
-- a caption longer than 8 words, since viewers cannot read a sentence while
+- a heading longer than 8 words, since viewers cannot read a sentence while
   listening to another;
 - a scene that narrates more than about 45 words, since speech fades and
   the start of a long passage is lost;

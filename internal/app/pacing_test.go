@@ -13,7 +13,7 @@ func TestPacingWarnings(t *testing.T) {
 		t.Fatal(rep.Diags)
 	}
 	got := rep.FormatText("t")
-	for _, want := range []string{"caption has 10 words", "scene a narrates"} {
+	for _, want := range []string{"heading has 10 words", "scene a narrates"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing warning %q in:\n%s", want, got)
 		}

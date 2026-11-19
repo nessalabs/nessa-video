@@ -219,8 +219,22 @@ func (r *resolver) voice(v *c.Video, n *script.Node) {
 		switch p.Key {
 		case "model":
 			spec.Model = p.Value
+		case "stability", "similarity", "style", "speed":
+			f, err := strconv.ParseFloat(p.Value, 64)
+			lo, hi := 0.0, 1.0
+			if p.Key == "speed" {
+				lo, hi = 0.7, 1.2
+			}
+			if err != nil || f < lo || f > hi {
+				r.diags.Errorf(p.Pos, fmt.Sprintf("a number from %g to %g", lo, hi), "bad %s %q", p.Key, p.Value)
+				continue
+			}
+			if spec.Tune == nil {
+				spec.Tune = map[string]float64{}
+			}
+			spec.Tune[p.Key] = f
 		default:
-			r.diags.Errorf(p.Pos, "voice takes model=", "unknown voice setting %q", p.Key)
+			r.diags.Errorf(p.Pos, "voice takes model= stability= similarity= style= speed=", "unknown voice setting %q", p.Key)
 		}
 	}
 	v.Voice = spec
@@ -580,7 +594,7 @@ func (r *resolver) step(n *script.Node) c.Step {
 		st.Target = r.parseSel(args[0].Text, args[0].Pos)
 		st.Decls = nil
 		for _, p := range n.Props {
-			if _, err := strconv.Atoi(p.Value); err != nil {
+			if _, err := strconv.Atoi(p.Value); err != nil && !c.TimingProp(p.Key) {
 				r.diags.Errorf(p.Pos, "positions are 0-based numbers", "bad position %s=%s", p.Key, p.Value)
 			}
 			st.Decls = append(st.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})

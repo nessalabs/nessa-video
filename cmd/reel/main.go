@@ -284,7 +284,7 @@ func renderCmd(args []string) int {
 		NewVoice: func(spec *c.VoiceSpec) (voice.Voice, error) {
 			switch spec.Engine {
 			case "elevenlabs":
-				el, err := elevenlabs.New(spec.ID, spec.Model)
+				el, err := elevenlabs.New(spec.ID, spec.Model, spec.Tune)
 				if err != nil {
 					return nil, err
 				}
@@ -421,7 +421,7 @@ func loadDotEnv(paths ...string) {
 func offlineVoice(spec *c.VoiceSpec) voice.Voice {
 	switch spec.Engine {
 	case "elevenlabs":
-		return voice.Cached{Voice: voice.Offline{K: elevenlabs.KeyFor(spec.ID, spec.Model)}, Dir: voice.CacheDir()}
+		return voice.Cached{Voice: voice.Offline{K: elevenlabs.KeyFor(spec.ID, spec.Model, spec.Tune)}, Dir: voice.CacheDir()}
 	case "silent":
 		return voice.Silent{}
 	}

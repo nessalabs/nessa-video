@@ -100,3 +100,7 @@ var KindProps = map[string]string{
 	"layer":    `(children stacked)`,
 	"place":    `children take x= y=`,
 }
+
+// TimingProp reports whether a step property sets when the step runs
+// rather than what it does.
+func TimingProp(k string) bool { return k == "at" || k == "for" || k == "on" || k == "ease" }

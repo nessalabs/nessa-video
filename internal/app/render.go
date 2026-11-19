@@ -225,7 +225,7 @@ func speakAll(ctx context.Context, v *c.Video, vo voice.Voice, log func(string))
 	out := map[[2]int]voice.Spoken{}
 	var mu sync.Mutex
 	var firstErr error
-	sem := make(chan struct{}, 4)
+	sem := make(chan struct{}, 2) // hosted voices limit parallel requests
 	var wg sync.WaitGroup
 	for _, jb := range jobs {
 		wg.Add(1)

@@ -311,3 +311,42 @@ func (m Moment) HasPlay(e *c.Element) (Anim, bool) {
 	a, ok := m.plan.plays[e]
 	return a, ok && m.T < a.Start
 }
+
+// Heading returns the scene's heading: the current say line's caption, the
+// one it replaces and how far the change has got, and an opacity. The first
+// heading shows from the scene's start, so a scene opens with its idea.
+func (m Moment) Heading() (text, prev string, mix, op float64) {
+	sp := m.plan
+	cur := -1
+	for i, cp := range sp.captions {
+		if i == 0 || m.T >= cp.Start {
+			cur = i
+		}
+	}
+	if cur < 0 {
+		return "", "", 0, 0
+	}
+	text, mix = sp.captions[cur].Text, 1
+	if cur > 0 && sp.captions[cur-1].Text != text {
+		prev = sp.captions[cur-1].Text
+		mix = clamp((m.T - sp.captions[cur].Start) / 0.35)
+	}
+	op = math.Min(clamp(m.T/0.3), clamp((sp.Dur-m.T)/0.3))
+	return text, prev, mix, op
+}
+
+// Subtitle returns the words being spoken now, the seconds since their line
+// began and an opacity. Only lines with real speech have subtitles.
+func (m Moment) Subtitle() (words []c.SaidWord, elapsed, op float64) {
+	for _, cp := range m.plan.captions {
+		if cp.Speech <= 0 || len(cp.Said) == 0 {
+			continue
+		}
+		end := cp.Start + cp.Speech
+		if m.T >= cp.Start && m.T <= end+0.35 {
+			words, elapsed = cp.Said, m.T-cp.Start
+			op = math.Min(clamp(elapsed/0.12), clamp((end+0.35-m.T)/0.3))
+		}
+	}
+	return words, elapsed, op
+}

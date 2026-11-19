@@ -55,11 +55,14 @@ scene fix
   say "singleflight lets ==one caller load==" speak="Single flight lets one caller load the key while every other caller waits."
 ```
 
-`voice elevenlabs VOICE_ID` picks a voice from the ElevenLabs library; `model=`
-is optional. `say` speaks its caption, without the `==` marks.
-`say speak="…"` with no caption shows and speaks the same words. Giving both,
-`say "short caption" speak="…"`, shows the short caption and speaks the longer
-sentence. `voice silent`
+`voice elevenlabs VOICE_ID` picks an ElevenLabs voice; `model=` is optional,
+and `stability=`, `similarity=` and `style=` (0 to 1) and `speed=` (0.7 to
+1.2) shape the delivery. Lower stability and some style sound more like
+someone talking than reading. The free ElevenLabs plan can use only the
+built-in voices through the API, not library voices. `say` speaks its
+caption, without the `==` marks. `say speak="…"` with no caption shows and
+speaks the same words. Giving both, `say "short heading" speak="…"`, shows
+the short heading and speaks the longer sentence. `voice silent`
 times a script as if it were narrated, with no sound and no service, which is
 useful for tests.
 
@@ -71,7 +74,7 @@ then the current folder and its parents. Scripts never contain the key. Keep
 `.env` out of version control; this repository ignores it.
 
 Without a key, `reel render` stops and says how to fix it. `reel render --mute`
-renders captions only.
+renders headings only.
 
 ## Timing
 
@@ -110,11 +113,21 @@ lines spoken before from the cache without contacting the voice, so their
 timings are exact for those lines; `reel check` says how many lines were
 exact and estimates the rest from their word count.
 
-## Captions that follow the voice
+## Heading and subtitles
 
-When a line is spoken, its caption follows the voice: words not yet said are
-dim, the word being said is bright, and said words settle back to the caption
-colour. `==emphasised==` words stay bright once said.
+A say line's caption is the scene's heading, at the top of the frame. It
+shows from the scene's start and changes, with a short crossfade, when a
+later line has a different caption; lines with the same caption keep it.
+
+What is spoken shows at the bottom as subtitles, one short line at a time,
+broken where the speaker pauses. They follow the voice: words not yet said
+are dim, the word being said is bright, and said words settle. Subtitles
+show only for lines with real speech, so a muted render or a script without
+a voice shows the heading alone.
+
+A scene's first line starts while the scene draws in, when nothing but
+`clear` comes before it, so the voice carries from scene to scene without a
+silent gap.
 
 Word timing is generic. A voice adapter reports the timings its engine knows;
 ElevenLabs reports a time for every character, which its adapter groups into
@@ -122,8 +135,7 @@ words. The core then matches those words to the caption's words, ignoring
 case and punctuation, and gives any word the voice said differently (a number
 read out in full) the time between its neighbours. If an engine reports no
 timings, the core estimates them from the length of the audio, weighting
-longer words, so every voice gets a following caption. When `speak=` and the
-caption differ, the caption shows as one line instead.
+longer words, so every voice gets following subtitles.
 
 ## Caching
 

@@ -24,6 +24,8 @@ type Video struct {
 // VoiceSpec is the narration voice a script asks for: `voice ENGINE ID model=…`.
 type VoiceSpec struct {
 	Engine, ID, Model string
+	// Tune holds delivery settings: stability, similarity, style, speed.
+	Tune map[string]float64
 }
 
 // Scene is one shot. Root holds what is on screen, including elements

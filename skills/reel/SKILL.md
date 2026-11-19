@@ -61,15 +61,20 @@ for a chart, timeline or terminal; a timeline that shows order only takes
 ## Write the script
 
 - Narration is optional. If the person wants a voice, add
-  `voice elevenlabs VOICE_ID`. Captions then follow the voice word by word.
-  Use `say speak="…"` to show and speak the same sentence, or
-  `say "short caption" speak="the full spoken sentence"` to speak more than
-  the caption shows. A `say` holds the next step until it has been spoken;
+  `voice elevenlabs VOICE_ID stability=0.4 style=0.3` with a conversational
+  built-in voice (Chris is `iP95p4xoKVk53GoZ742B`). Write every line as
+  `say "short heading" speak="what you would say to a colleague"`: the
+  heading shows at the top, and the spoken words show as subtitles at the
+  bottom. Repeat a scene's heading on each of its lines.
+- Write the narration as one talk, not a list of slides: link scenes ("So
+  here's how it worked before.", "Now the follower side."), use "you" and
+  contractions, and keep sentences short. Put a scene's first `say` right
+  after `clear` so the voice starts as the scene draws in. A `say` holds the next step until it has been spoken;
   start a step with `with` to show it while the line is spoken
   (`say "…"` then `with mark #diff lines=+12..+14`). Never
   write an API key into a script; it comes from `ELEVENLABS_API_KEY` or a
   local `.env`. If no key is available, render with `--mute`.
-- Use `==…==` for the two or three words of a caption that matter.
+- Use `==…==` for the two or three words of a heading that matter.
 - Use `camera zoom` or a new scene instead of crowding.
 - Start a scene with `clear` when its content is unrelated to the last one.
 - Prefer components (`laptop`, `server`, `process`, `db`, `queue`) and

@@ -65,7 +65,7 @@ London).
 | --- | --- | --- |
 | Order: names, problem, concrete case, mechanism, edge cases, evidence | Tao; Pennington; pre-training; concrete first | the writer |
 | One idea per scene, at most about 45 spoken words | segmenting; transient information | `reel check` warns |
-| Captions of 8 words or fewer; the sentence goes in `speak=` | redundancy | `reel check` warns |
+| Headings of 8 words or fewer; the sentence goes in `speak=` and shows as subtitles | redundancy | `reel check` warns |
 | Narration between 130 and 210 words a minute | speech rate | `reel check` warns, with a voice |
 | Highlight what is named, as it is named, one at a time | signalling; contiguity | `focus #x on="the words"` after the `say` |
 | Animate change, keep structure still, about 7 labelled things at most | animation; coherence | the writer |

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,12 +29,13 @@ const DefaultModel = "eleven_multilingual_v2"
 // Voice speaks with one ElevenLabs voice.
 type Voice struct {
 	ID, Model, key string
+	Tune           map[string]float64 // stability, similarity, style, speed
 	Base           string // API base URL; tests point it at a local server
 	Client         *http.Client
 }
 
 // New returns a voice for id, reading the key from the environment.
-func New(id, model string) (*Voice, error) {
+func New(id, model string, tune map[string]float64) (*Voice, error) {
 	key := os.Getenv(KeyEnv)
 	if key == "" {
 		return nil, voice.ErrNoKey{Env: KeyEnv}
@@ -41,34 +43,60 @@ func New(id, model string) (*Voice, error) {
 	if model == "" {
 		model = DefaultModel
 	}
-	return &Voice{ID: id, Model: model, key: key, Base: "https://api.elevenlabs.io",
+	return &Voice{ID: id, Model: model, Tune: tune, key: key, Base: "https://api.elevenlabs.io",
 		Client: &http.Client{Timeout: 90 * time.Second}}, nil
 }
 
 // Key implements voice.Voice.
-func (v *Voice) Key() string { return KeyFor(v.ID, v.Model) }
+func (v *Voice) Key() string { return KeyFor(v.ID, v.Model, v.Tune) }
 
 // KeyFor is the cache key for a voice and model, so cached lines can be
 // found without an API key.
-func KeyFor(id, model string) string {
+func KeyFor(id, model string, tune map[string]float64) string {
 	if model == "" {
 		model = DefaultModel
 	}
-	return "elevenlabs/" + id + "/" + model + "/pcm24k+words"
+	k := "elevenlabs/" + id + "/" + model + "/pcm24k+words"
+	names := make([]string, 0, len(tune))
+	for n := range tune {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		k += fmt.Sprintf("/%s=%g", n, tune[n])
+	}
+	return k
+}
+
+// settings maps a script's delivery settings to the API's voice_settings.
+func settings(tune map[string]float64) map[string]any {
+	if len(tune) == 0 {
+		return nil
+	}
+	api := map[string]string{"stability": "stability", "similarity": "similarity_boost", "style": "style", "speed": "speed"}
+	out := map[string]any{"use_speaker_boost": true}
+	for k, v := range tune {
+		out[api[k]] = v
+	}
+	return out
 }
 
 // Speak asks the API for 24 kHz 16-bit mono PCM with character timings,
 // and turns those into word timings.
 func (v *Voice) Speak(ctx context.Context, text string) (voice.Spoken, error) {
-	body, _ := json.Marshal(map[string]string{"text": text, "model_id": v.Model})
+	req := map[string]any{"text": text, "model_id": v.Model}
+	if vs := settings(v.Tune); vs != nil {
+		req["voice_settings"] = vs
+	}
+	body, _ := json.Marshal(req)
 	u := fmt.Sprintf("%s/v1/text-to-speech/%s/with-timestamps?output_format=pcm_24000", v.Base, url.PathEscape(v.ID))
 	var last error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < 6; attempt++ { // rate limits clear in seconds
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
 				return voice.Spoken{}, ctx.Err()
-			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			case <-time.After(time.Duration(attempt) * 3 * time.Second):
 			}
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))

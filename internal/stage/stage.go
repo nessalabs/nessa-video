@@ -80,6 +80,7 @@ func (s *Stage) Options() layout.Options {
 			"box":     t("sans500", "size-box", 15),
 			"card":    t("sans400", "size-card", 15),
 			"caption": t("sans400", "size-caption", 20),
+			"heading": t("sans500", "size-heading", 26),
 		},
 		Gap:       s.num("gap", 24),
 		MaxTextW:  640,
@@ -87,10 +88,17 @@ func (s *Stage) Options() layout.Options {
 	}
 }
 
+// The heading sits above the scene and subtitles below it, in design units.
+const (
+	HeadingBand  = 112.0
+	SubtitleBand = 104.0
+	SubtitleMax  = 52 // characters on one subtitle line
+)
+
 // Area returns the design-space rectangle scenes are laid out in.
 func (s *Stage) Area() layout.Rect {
 	dw, dh, _ := s.Design()
-	return layout.Rect{X: 64, Y: 64, W: dw - 128, H: dh - 64 - 128}
+	return layout.Rect{X: 64, Y: HeadingBand, W: dw - 128, H: dh - HeadingBand - SubtitleBand}
 }
 
 // Layout places a scene's elements. Positions do not change while a scene
@@ -145,16 +153,24 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 		p.packet(sc, pk)
 	}
 
-	if text, op := m.Caption(); text != "" && op > 0 {
-		t := opt.Type["caption"]
-		p.m = base
-		p.opacity = op
-		p.draw = 1
-		if words, elapsed := m.Spoken(); words != nil {
-			p.followWords(text, words, elapsed, dw/2, dh-72, t)
-		} else {
-			p.runs(text, dw/2, dh-72, t, s.col("ink-2"), s.col("hi"), render.Middle)
+	p.m = base
+	p.draw = 1
+	if text, prev, mix, op := m.Heading(); text != "" && op > 0 {
+		t := opt.Type["heading"]
+		y := HeadingBand/2 + t.Size*0.36
+		if prev != "" && mix < 1 {
+			p.opacity = op * (1 - mix)
+			p.m = base.Mul(render.Translate(0, -8*mix))
+			p.runs(prev, dw/2, y, t, s.col("ink-2"), s.col("hi"), render.Middle)
 		}
+		p.opacity = op * mix
+		p.m = base.Mul(render.Translate(0, 8*(1-mix)))
+		p.runs(text, dw/2, y, t, s.col("ink-2"), s.col("hi"), render.Middle)
+		p.m = base
+	}
+	if words, elapsed, op := m.Subtitle(); op > 0 {
+		p.opacity = op
+		p.subtitle(words, elapsed, dw/2, dh-SubtitleBand/2+8, opt.Type["caption"])
 	}
 	return l
 }
@@ -967,86 +983,75 @@ func (p *painter) metric(e *c.Element, r layout.Rect, lk look, ap motion.Appeara
 	p.opacity = opacity
 }
 
-// capWord is one caption word and whether it sits inside ==emphasis==.
-type capWord struct {
-	text string
-	emph bool
-}
-
-// captionWords splits a caption into words in the same order as
-// strings.Fields(layout.Plain(text)), keeping which ones are emphasised.
-func captionWords(text string) []capWord {
-	var out []capWord
-	emph := false
-	for _, tok := range strings.Fields(text) {
-		var b strings.Builder
-		wordEmph := false
-		for i := 0; i < len(tok); i++ {
-			if i+1 < len(tok) && tok[i] == '=' && tok[i+1] == '=' {
-				emph = !emph
-				i++
-				continue
-			}
-			if i+1 < len(tok) && tok[i] == '_' && tok[i+1] == '_' {
-				i++
-				continue
-			}
-			if emph {
-				wordEmph = true
-			}
-			b.WriteByte(tok[i])
-		}
-		if b.Len() > 0 {
-			out = append(out, capWord{b.String(), wordEmph})
-		}
-	}
-	return out
-}
-
-// followWords draws a caption that follows the voice: words not yet said
-// are dim, the word being said is bright, and said words settle to the
-// caption colour, or stay bright when emphasised.
-func (p *painter) followWords(text string, times []c.WordTime, elapsed, cx, y float64, t layout.Type) {
-	s := p.s
-	words := captionWords(text)
-	space := s.Measure.Measure(" ", t.Font, t.Size)
-	total := 0.0
-	widths := make([]float64, len(words))
-	for i, w := range words {
-		widths[i] = s.Measure.Measure(w.text, t.Font, t.Size)
-		total += widths[i]
-	}
-	total += space * float64(max(len(words)-1, 0))
-	x := cx - total/2
-	dim, said, now := s.col("ink-dim"), s.col("ink-2"), s.col("hi")
-	for i, w := range words {
-		cl := dim
-		if i < len(times) {
-			wt := times[i]
-			rest := said
-			if w.emph {
-				rest = now
-			}
-			switch {
-			case elapsed < wt.Start:
-				cl = dim
-			case elapsed < wt.End:
-				cl = lerpColor(dim, now, math.Min(1, (elapsed-wt.Start)/0.08))
-			default:
-				cl = lerpColor(now, rest, math.Min(1, (elapsed-wt.End)/0.2))
-			}
-		} else if w.emph {
-			cl = now
-		}
-		p.text(w.text, x, y, t, cl, render.Start)
-		x += widths[i] + space
-	}
-}
-
 // str returns an element's computed property, or "".
 func str(e *c.Element, key string) string {
 	if v, ok := e.Computed[key]; ok {
 		return v.Value
 	}
 	return ""
+}
+
+// subtitleLines breaks spoken words into short lines, preferring to end a
+// line where the speaker pauses (after punctuation).
+func subtitleLines(words []c.SaidWord) [][]c.SaidWord {
+	var out [][]c.SaidWord
+	var cur []c.SaidWord
+	n := 0
+	for _, w := range words {
+		t := strings.ReplaceAll(w.Text, "==", "")
+		if t == "" {
+			continue
+		}
+		if len(cur) > 0 && n+1+len(t) > SubtitleMax {
+			out, cur, n = append(out, cur), nil, 0
+		}
+		cur = append(cur, w)
+		n += len(t) + 1
+		if strings.ContainsAny(t[len(t)-1:], ".?!;:") || (strings.HasSuffix(t, ",") && n > SubtitleMax/2) {
+			out, cur, n = append(out, cur), nil, 0
+		}
+	}
+	if len(cur) > 0 {
+		out = append(out, cur)
+	}
+	return out
+}
+
+// subtitle draws the line of speech being said now: said words in the
+// caption colour, the word being said bright, the rest dim.
+func (p *painter) subtitle(words []c.SaidWord, elapsed, cx, y float64, t layout.Type) {
+	lines := subtitleLines(words)
+	if len(lines) == 0 {
+		return
+	}
+	line := lines[0]
+	for _, l := range lines {
+		if elapsed >= l[0].Start-0.05 {
+			line = l
+		}
+	}
+	s := p.s
+	space := s.Measure.Measure(" ", t.Font, t.Size)
+	texts := make([]string, len(line))
+	widths := make([]float64, len(line))
+	total := space * float64(len(line)-1)
+	for i, w := range line {
+		texts[i] = strings.ReplaceAll(w.Text, "==", "")
+		widths[i] = s.Measure.Measure(texts[i], t.Font, t.Size)
+		total += widths[i]
+	}
+	x := cx - total/2
+	dim, said, now := s.col("ink-dim"), s.col("ink-2"), s.col("hi")
+	for i, w := range line {
+		cl := dim
+		switch {
+		case elapsed < w.Start:
+		case elapsed < w.End:
+			cl = lerpColor(dim, now, math.Min(1, (elapsed-w.Start)/0.08))
+		default:
+			cl = lerpColor(now, said, math.Min(1, (elapsed-w.End)/0.25))
+		}
+		p.text(texts[i], x, y, t, cl, render.Start)
+		x += widths[i] + space
+	}
 }

@@ -114,3 +114,11 @@ func TestOnWordMustBeSaid(t *testing.T) {
 		}
 	}
 }
+
+// A scene's opening line starts while the scene draws in.
+func TestOpeningLineStartsEarly(t *testing.T) {
+	p := plan(t, "video \"t\"\nscene a\n  box #a\n  box #b\n  box #c\n  say \"hello\"\n")
+	if s := p.Scenes[0].Timeline()[0].Start; s > DefaultTimings().Lead+0.3+1e-9 {
+		t.Errorf("opening line starts at %.2f; want while the scene draws in", s)
+	}
+}

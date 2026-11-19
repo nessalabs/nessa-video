@@ -35,7 +35,7 @@ func TestSpeak(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv(KeyEnv, "test-key")
-	v, err := New("voice123", "")
+	v, err := New("voice123", "", map[string]float64{"stability": 0.4, "speed": 1.05})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,11 +54,17 @@ func TestSpeak(t *testing.T) {
 		!strings.Contains(gotBody, `"text":"hello there"`) || !strings.Contains(gotBody, DefaultModel) {
 		t.Fatalf("request: key=%q path=%q query=%q body=%s", gotKey, gotPath, gotQuery, gotBody)
 	}
+	if !strings.Contains(gotBody, `"stability":0.4`) || !strings.Contains(gotBody, `"speed":1.05`) {
+		t.Fatalf("voice settings not sent: %s", gotBody)
+	}
+	if k := v.Key(); k != KeyFor("voice123", "", nil)+"/speed=1.05/stability=0.4" {
+		t.Fatalf("cache key %q should name the settings", k)
+	}
 }
 
 func TestErrors(t *testing.T) {
 	t.Setenv(KeyEnv, "")
-	if _, err := New("v", ""); err == nil || !strings.Contains(err.Error(), "--mute") {
+	if _, err := New("v", "", nil); err == nil || !strings.Contains(err.Error(), "--mute") {
 		t.Fatalf("missing key error = %v", err)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +73,7 @@ func TestErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv(KeyEnv, "bad")
-	v, _ := New("v", "")
+	v, _ := New("v", "", nil)
 	v.Base = srv.URL
 	if _, err := v.Speak(context.Background(), "x"); err == nil || !strings.Contains(err.Error(), "Invalid API key") {
 		t.Fatalf("error = %v", err)

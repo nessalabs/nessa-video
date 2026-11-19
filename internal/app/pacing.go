@@ -29,8 +29,8 @@ func lintPacing(v *c.Video, ds *diag.List) {
 				continue
 			}
 			if n := len(strings.Fields(voice.Plain(st.Text))); n > MaxCaptionWords {
-				ds.Warnf(st.Pos, `keep the caption to the key phrase and put the rest in speak="…"`,
-					"caption has %d words; viewers read at most %d while listening", n, MaxCaptionWords)
+				ds.Warnf(st.Pos, `keep the heading to the key phrase and put the rest in speak="…"`,
+					"heading has %d words; viewers read at most %d while listening", n, MaxCaptionWords)
 			}
 			spoken := len(strings.Fields(voice.Plain(st.Spoken())))
 			words += spoken

@@ -23,7 +23,7 @@ type Timings struct {
 // DefaultTimings match the hairline theme.
 func DefaultTimings() Timings {
 	return Timings{Draw: .6, Fade: .35, Rise: .45, State: .3, Camera: .7, Send: .8, CharTyping: .02,
-		Stagger: .15, PartStagger: .06, Lead: .2, Hold: 1.0, WordsPerSec: 2.8}
+		Stagger: .15, PartStagger: .06, Lead: .2, Hold: .8, WordsPerSec: 2.8}
 }
 
 // Anim is one timed effect on one element, in scene seconds.
@@ -67,6 +67,7 @@ type Caption struct {
 	Step   int
 	Speech float64
 	Words  []c.WordTime
+	Said   []c.SaidWord // the spoken words, timed from the voice when it spoke
 }
 
 // Mark changes which lines of a code block, or cells of an array, are emphasised.
@@ -273,6 +274,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	var captionNeed, voiceFree float64
 	var hold float64
 	var line *spokenLine // the last say line, for on=
+	// the scene's opening line may start as the scene draws in when only
+	// instant steps (clear, or with-less state set-up) come before it
+	firstStep := 0
+	for firstStep < len(sc.Steps) && sc.Steps[firstStep].Verb == "clear" {
+		firstStep++
+	}
 	for si, st := range sc.Steps {
 		start := t
 		if st.With {
@@ -386,7 +393,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		case "ptr":
 			for _, e := range targets {
 				for _, d := range st.Decls {
-					if i, err := strconv.Atoi(d.Value); err == nil {
+					if i, err := strconv.Atoi(d.Value); err == nil && !c.TimingProp(d.Key) {
 						sp.ptrs[e] = append(sp.ptrs[e], PointerMove{Name: d.Key, To: i, Start: start, Dur: dur})
 					}
 				}
@@ -424,6 +431,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				}
 			}
 		case "say":
+			// The first line starts as the scene draws in, so the voice
+			// carries from one scene into the next without a silent gap.
+			_, timed := st.Lookup("at")
+			if si == firstStep && !st.With && !timed && !onWord {
+				start = math.Min(start, tm.Lead+0.3)
+			}
 			// narration never overlaps: a line waits for the previous one
 			start = math.Max(start, voiceFree)
 			speech := st.Speech
@@ -431,7 +444,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				words := len(strings.Fields(strings.ReplaceAll(st.Spoken(), "==", "")))
 				speech = float64(words) / tm.WordsPerSec
 			}
-			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech, Words: st.Words})
+			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech, Words: st.Words, Said: st.Said})
 			voiceFree = start + speech + 0.2
 			line = &spokenLine{start: start, speech: speech, said: st.Said, spoken: st.Spoken()}
 			captionNeed = math.Max(captionNeed, start+speech)
