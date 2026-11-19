@@ -1,7 +1,9 @@
 package composition
 
 import (
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/nessalabs/nessa-video/internal/diag"
 	"github.com/nessalabs/nessa-video/internal/selector"
@@ -51,10 +53,59 @@ type Step struct {
 	// Words times each word of the caption as it is spoken, by caption word
 	// index; nil when the spoken words differ from the caption.
 	Words []WordTime
+	// Said times each spoken word of a say step, in seconds from the
+	// line's start: from the voice when it reports timings, otherwise
+	// estimated. Steps with on= start at these words.
+	Said []SaidWord
 }
 
 // WordTime is when one caption word is spoken, in seconds from the line's start.
 type WordTime struct{ Start, End float64 }
+
+// SaidWord is one spoken word and when it is said.
+type SaidWord struct {
+	Text       string
+	Start, End float64
+}
+
+// SpokenWords splits narration into words the way on= matches them:
+// lower case, letters and digits only, ==marks== and punctuation dropped.
+func SpokenWords(s string) []string {
+	var out []string
+	for _, f := range strings.Fields(strings.ReplaceAll(s, "==", "")) {
+		w := strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return unicode.ToLower(r)
+			}
+			return -1
+		}, f)
+		if w != "" {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// FindWords returns the index of the first word of phrase in words, or -1.
+func FindWords(words []string, phrase string) int {
+	p := SpokenWords(phrase)
+	if len(p) == 0 {
+		return -1
+	}
+	for i := 0; i+len(p) <= len(words); i++ {
+		match := true
+		for j := range p {
+			if words[i+j] != p[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
+}
 
 // Spoken returns what a say step reads aloud: its speak= text, or its caption.
 func (s Step) Spoken() string {

@@ -1240,6 +1240,7 @@ func (r *resolver) windowCode(s *c.Scene) {
 }
 
 func (r *resolver) validate(s *c.Scene) {
+	r.checkOn(s)
 	seen := map[string]*c.Element{}
 	s.Root.Walk(func(e *c.Element) {
 		if id := e.ID(); id != "" {
@@ -1285,4 +1286,26 @@ func uniq(xs []string) []string {
 		}
 	}
 	return out
+}
+
+// checkOn makes sure every on= names words the last say line before it says.
+func (r *resolver) checkOn(s *c.Scene) {
+	var said []string
+	have := false
+	for _, st := range s.Steps {
+		if st.Verb == "say" {
+			said, have = c.SpokenWords(st.Spoken()), true
+			continue
+		}
+		phrase, ok := st.Lookup("on")
+		if !ok {
+			continue
+		}
+		switch {
+		case !have:
+			r.diags.Errorf(st.Pos, "put the step after the say line that names it", "on=%q has no say line before it", phrase)
+		case c.FindWords(said, phrase) < 0:
+			r.diags.Errorf(st.Pos, fmt.Sprintf("the line says: %s", strings.Join(said, " ")), "the narration before this step never says %q", phrase)
+		}
+	}
 }

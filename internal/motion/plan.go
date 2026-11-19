@@ -272,10 +272,15 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	prevStart := t
 	var captionNeed, voiceFree float64
 	var hold float64
+	var line *spokenLine // the last say line, for on=
 	for si, st := range sc.Steps {
 		start := t
 		if st.With {
 			start = prevStart
+		}
+		phrase, onWord := st.Lookup("on")
+		if onWord && line != nil {
+			start = line.at(phrase)
 		}
 		if v, ok := st.Lookup("at"); ok {
 			if d, ok := seconds(v); ok {
@@ -428,6 +433,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech, Words: st.Words})
 			voiceFree = start + speech + 0.2
+			line = &spokenLine{start: start, speech: speech, said: st.Said, spoken: st.Spoken()}
 			captionNeed = math.Max(captionNeed, start+speech)
 			// the next step waits for this line, like any other step;
 			// `with` puts a step alongside the line instead
@@ -435,10 +441,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				dur = speech + 0.2
 			}
 		}
-		sp.timeline = append(sp.timeline, StepTime{Verb: st.Verb, Line: st.Pos.Line, Start: start, Dur: dur, Target: targetSrc(st), Text: st.Text})
+		text := st.Text
+		if onWord {
+			text = "on " + phrase
+		}
+		sp.timeline = append(sp.timeline, StepTime{Verb: st.Verb, Line: st.Pos.Line, Start: start, Dur: dur, Target: targetSrc(st), Text: text})
 		prevStart = start
 		t = math.Max(t, start+dur)
-		if !st.With {
+		if !st.With && !onWord {
 			t = start + dur
 		}
 	}
@@ -610,4 +620,43 @@ func (p *Plan) Narration() []Cue {
 		}
 	}
 	return out
+}
+
+// spokenLine is a say line as on= sees it: when it starts and when each
+// of its words is said.
+type spokenLine struct {
+	start, speech float64
+	said          []c.SaidWord
+	spoken        string
+}
+
+// HighlightLead starts a step this long before its word is said, so the
+// eye arrives as the ear does.
+const HighlightLead = 0.12
+
+// at returns the scene time a step with on=phrase starts: just before the
+// phrase's first word is said. Without word timings it estimates the word's
+// place from its position in the line. A phrase the line does not say
+// starts with the line; reel check reports it.
+func (l *spokenLine) at(phrase string) float64 {
+	if len(l.said) > 0 {
+		var words []string
+		var idx []int
+		for i, w := range l.said {
+			for _, n := range c.SpokenWords(w.Text) {
+				words = append(words, n)
+				idx = append(idx, i)
+			}
+		}
+		if k := c.FindWords(words, phrase); k >= 0 {
+			return l.start + math.Max(0, l.said[idx[k]].Start-HighlightLead)
+		}
+		return l.start
+	}
+	words := c.SpokenWords(l.spoken)
+	k := c.FindWords(words, phrase)
+	if k < 0 || len(words) == 0 {
+		return l.start
+	}
+	return l.start + math.Max(0, l.speech*float64(k)/float64(len(words))-HighlightLead)
 }

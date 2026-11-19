@@ -81,7 +81,18 @@ Steps run one after another after the scene's elements have entered.
 | `play #tl` | sweep a timeline playhead, or reveal a sequence diagram's rows |
 | `wait 1s`, `hold 2s` | pause; extend the end |
 
-Timing: `with` before a step runs it alongside the previous one, `at=2s` or
+Timing: `on="phrase"` starts a step just before the last `say` line
+speaks those words, so a highlight lands as it is named:
+
+```reel
+say "Two checks" speak="First the cache, then the database answers."
+focus #cache on="cache"
+focus #db on="database"
+```
+
+The words come from the voice's own timings, or are estimated from their
+place in the line when there is no voice. `reel check` reports a phrase the
+line never says. `with` before a step runs it alongside the previous one, `at=2s` or
 `at=+0.5s` sets its start, `for=1.5s` its length, `scene name 6s` the
 scene's length. Otherwise everything is automatic.
 

@@ -1,8 +1,11 @@
 package motion
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
+	c "github.com/nessalabs/nessa-video/internal/composition"
 	"github.com/nessalabs/nessa-video/internal/resolve"
 )
 
@@ -64,5 +67,50 @@ scene one
 	}
 	if s := m.Look(el(t, sp.Scene, "#c")).State; s == "focus" {
 		t.Errorf("#c is focused but was not named")
+	}
+}
+
+// on= starts a step just before its word is said, from the voice's timings
+// when there are some and from the word's place in the line otherwise.
+func TestOnWord(t *testing.T) {
+	src := `video "t"
+scene one
+  box #a
+  box #b
+  say "Watch" speak="first the cache then the database"
+  focus #a on="cache"
+  focus #b on="the database"
+`
+	r := resolve.Script(src)
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	say := &r.Video.Scenes[0].Steps[0]
+	say.Speech = 3
+	say.Said = []c.SaidWord{{"first", 0, .3}, {"the", .3, .5}, {"cache,", .5, 1}, {"then", 1.2, 1.5}, {"the", 1.5, 1.6}, {"database.", 1.6, 2.4}}
+	tl := New(r.Video, DefaultTimings()).Scenes[0].Timeline()
+	if !near(tl[1].Start, tl[0].Start+.5-HighlightLead) {
+		t.Errorf("focus #a at %.2f; want just before \"cache\" at %.2f", tl[1].Start, tl[0].Start+.5)
+	}
+	if !near(tl[2].Start, tl[0].Start+1.5-HighlightLead) {
+		t.Errorf("focus #b at %.2f; want just before \"the database\" at %.2f", tl[2].Start, tl[0].Start+1.5)
+	}
+	// without timings the place in the line stands in
+	r2 := resolve.Script(src)
+	r2.Video.Scenes[0].Steps[0].Speech = 3
+	tl2 := New(r2.Video, DefaultTimings()).Scenes[0].Timeline()
+	if want := tl2[0].Start + 3*2.0/6 - HighlightLead; !near(tl2[1].Start, want) {
+		t.Errorf("estimated focus #a at %.2f; want %.2f", tl2[1].Start, want)
+	}
+}
+
+func TestOnWordMustBeSaid(t *testing.T) {
+	for src, want := range map[string]string{
+		"video \"t\"\nscene s\n  box #a\n  focus #a on=\"x\"\n":                     "has no say line before it",
+		"video \"t\"\nscene s\n  box #a\n  say \"one two\"\n  focus #a on=\"three\"\n": "never says",
+	} {
+		if got := fmt.Sprint(resolve.Script(src).Diags); !strings.Contains(got, want) {
+			t.Errorf("want %q, got %s", want, got)
+		}
 	}
 }

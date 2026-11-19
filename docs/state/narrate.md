@@ -88,6 +88,20 @@ something while a line is spoken, start that step with `with`:
   with mark #schema lines=+107..+108
 ```
 
+To land a highlight on the word that names it, give the step `on=` with
+the words, after the line:
+
+```reel
+  say "The ==grant log==" speak="The grant log lists every share and revoke."
+  focus #log on="grant log"
+  focus #revoke on="revoke"
+```
+
+The step starts 0.12 s before the first of those words is said, so the eye
+arrives as the ear does. Word times come from the voice; with none, a
+word's place in the line stands in. Steps with `on=` never hold back the
+steps after them. `reel check` reports words the line does not say.
+
 `for=` on a `say` sets its length instead. A scene lasts at least until its
 last line has been spoken, plus the usual hold.
 

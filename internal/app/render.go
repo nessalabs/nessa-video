@@ -176,11 +176,15 @@ func applySpeech(v *c.Video, speech map[[2]int]voice.Spoken) {
 	for k, s := range speech {
 		st := &v.Scenes[k[0]].Steps[k[1]]
 		st.Speech = s.Audio.Seconds()
+		timed := s.Words
+		if len(timed) == 0 { // the engine gave no timings: estimate them
+			timed = voice.EstimateWords(voice.Plain(st.Spoken()), s.Audio.Seconds())
+		}
+		st.Said = st.Said[:0]
+		for _, w := range timed {
+			st.Said = append(st.Said, c.SaidWord{Text: w.Text, Start: w.Start, End: w.End})
+		}
 		if _, own := st.Lookup("speak"); !own {
-			timed := s.Words
-			if len(timed) == 0 { // the engine gave no timings: estimate them
-				timed = voice.EstimateWords(voice.Plain(st.Spoken()), s.Audio.Seconds())
-			}
 			st.Words = alignWords(st.Text, timed)
 		}
 	}

@@ -212,14 +212,20 @@ func (r CheckReport) FormatText(file string) string {
 			}
 		}
 		fmt.Fprintf(&b, "ok: %d scenes, %.1fs, %s, %d fps, theme %s", len(r.Scenes), r.Seconds, r.Size, r.FPS, r.Theme)
-		if warns == 1 {
-			b.WriteString(", 1 warning")
-		} else if warns > 1 {
-			fmt.Fprintf(&b, ", %d warnings", warns)
+		if warns > 0 {
+			b.WriteString(", " + count(warns, "warning"))
 		}
 		b.WriteString("\n")
 	} else {
-		fmt.Fprintf(&b, "%d errors, %d warnings\n", errs, warns)
+		fmt.Fprintf(&b, "%s, %s\n", count(errs, "error"), count(warns, "warning"))
 	}
 	return b.String()
+}
+
+// count writes n with its noun, singular or plural.
+func count(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }

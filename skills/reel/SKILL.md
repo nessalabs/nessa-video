@@ -49,8 +49,8 @@ for a chart, timeline or terminal; a timeline that shows order only takes
 - Name a thing in plain words first. Show an identifier at most once, next
   to its plain name (`card "the position is past the head" title="CursorAhead"`).
 - Highlight exactly what the voice names, when it names it, one thing at a
-  time: start the highlight with `with` on the line that names it, and dim
-  what was shown before.
+  time: after the `say` line, start each highlight with `on="the words"`
+  (`focus #log on="grant log"`) and dim what was shown before.
 - Animate what changes (a pointer moves, a message is sent, a step runs).
   Keep structure still. At most about seven labelled things on screen.
 - Show code only when its exact text is the point: an API shape, a config
