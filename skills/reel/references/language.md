@@ -78,7 +78,7 @@ Steps run one after another after the scene's elements have entered.
 | `type SELECTOR` | type out a terminal, code or text block |
 | `mark SELECTOR lines=…` / `cells=…` | move a code or array focus; `lines=+12..+14,+20` takes several ranges |
 | `ptr #a lo=2` / `swap #a 0 3` | move pointers, swap cells |
-| `walk #flow A B C` | light diagram nodes in order |
+| `walk #flow A B C` | light diagram nodes in order; on a `mermaid #flow reveal=steps`, bring them in one by one as well |
 | `play #tl` | sweep a timeline playhead, or reveal a sequence diagram's rows; after a `say`, it unfolds over the rest of that line. `play #seq to=2 on="…"` reveals up to the second row, so each message appears as it is told |
 | `wait 1s`, `hold 2s` | pause; extend the end |
 

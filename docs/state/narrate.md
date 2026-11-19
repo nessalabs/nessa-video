@@ -132,6 +132,12 @@ steps after them. `reel check` reports words the line does not say.
 Speaking is a step like any other, so drawing can follow it. `show #x
 on="the peer"` draws an element in, with its enter animation, as the words
 are said; until then it is not on screen, and connectors to it wait for it.
+A flowchart with `reveal=steps` starts empty: each `walk` brings in the
+parts it visits, the link into a new part drawing first and the part
+fading in where it lands, and parts never walked or shown stay hidden, also
+when the diagram is carried into the next scene. Put `fit=false` on it to
+keep its direction while it grows.
+
 `play #seq to=2 on="asks"` reveals a sequence diagram up to its second row
 (a timeline up to that time), and a later `play` carries on from there, so
 a diagram is drawn piece by piece as it is told.
@@ -169,8 +175,12 @@ ElevenLabs reports a time for every character, which its adapter groups into
 words. The core then matches those words to the caption's words, ignoring
 case and punctuation, and gives any word the voice said differently (a number
 read out in full) the time between its neighbours. If an engine reports no
-timings, the core estimates them from the length of the audio, weighting
-longer words, so every voice gets following subtitles.
+timings (Phonon reports none), the core times words from the audio itself:
+it finds where speech starts and ends and where the speaker pauses, matches
+those pauses to the line's punctuation in order (a comma the speaker ran
+through gets none), and spreads words by length within each phrase.
+Against ElevenLabs' real timings this puts word starts about 90 ms out on
+average, where spreading words evenly over the clip was 190 ms out.
 
 ## Caching
 

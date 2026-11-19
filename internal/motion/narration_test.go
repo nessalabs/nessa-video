@@ -181,3 +181,65 @@ scene a
 		t.Errorf("playhead at the end = %.2f, want 1", pos)
 	}
 }
+
+// A flowchart with reveal=steps starts empty and grows as walk visits it.
+func TestFlowchartBuildsAsItIsWalked(t *testing.T) {
+	r := resolve.Script(`video "t"
+scene a
+  mermaid #f reveal=steps
+    flowchart LR
+      A[a] --> B[b]
+      B --> C[c]
+      B --> D[d]
+  say "Watch" speak="first a then b then c"
+  walk #f A B on="first"
+  walk #f B C on="then c"
+`)
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	r.Video.Scenes[0].Steps[0].Speech = 4
+	sp := New(r.Video, DefaultTimings()).Scenes[0]
+	tl := sp.Timeline()
+	a, b, c, d := el(t, sp.Scene, "#f/A"), el(t, sp.Scene, "#f/B"), el(t, sp.Scene, "#f/C"), el(t, sp.Scene, "#f/D")
+	if op := sp.At(tl[1].Start - 0.2).Look(a).Opacity; op != 0 {
+		t.Errorf("a is visible (%.2f) before the walk reaches it", op)
+	}
+	if op := sp.At(tl[2].Start - 0.05).Look(c).Opacity; op != 0 {
+		t.Errorf("c is visible (%.2f) before the second walk", op)
+	}
+	if op := sp.End().Look(b).Opacity; op < 0.99 {
+		t.Errorf("b should be in by the end: %.2f", op)
+	}
+	if op := sp.End().Look(d).Opacity; op != 0 {
+		t.Errorf("d was never walked and should stay hidden: %.2f", op)
+	}
+}
+
+// A part a diagram never showed stays hidden when the diagram is carried,
+// until a walk in the new scene reaches it.
+func TestHiddenPartsStayHiddenWhenCarried(t *testing.T) {
+	r := resolve.Script(`video "t"
+scene one
+  mermaid #f reveal=steps
+    flowchart LR
+      A[a] --> B[b]
+      B --> C[c]
+  walk #f A B
+scene two
+  say "Watch" speak="and then c"
+  walk #f B C on="then c"
+`)
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	r.Video.Scenes[1].Steps[0].Speech = 2
+	sp := New(r.Video, DefaultTimings()).Scenes[1]
+	c := el(t, sp.Scene, "#f/C")
+	if op := sp.At(0.1).Look(c).Opacity; op != 0 {
+		t.Errorf("c pops in at the cut: %.2f", op)
+	}
+	if op := sp.End().Look(c).Opacity; op < 0.99 {
+		t.Errorf("c should be in once walked: %.2f", op)
+	}
+}

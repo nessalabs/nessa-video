@@ -224,6 +224,36 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 
 	// elements a show step names wait for it instead of entering now
 	waiting := map[*c.Element]bool{}
+	// a diagram with reveal=steps starts empty: walk and show bring in its parts
+	building := map[*c.Element]bool{}
+	sc.Root.Walk(func(e *c.Element) {
+		if e.Carried || prop(e, "reveal", "") != "steps" {
+			return
+		}
+		building[e] = true
+		for _, ch := range e.Children {
+			if ch.Edge == nil {
+				waiting[ch] = true
+			}
+		}
+	})
+	// parts the last scene never showed are still to come
+	if prev != nil {
+		sc.Root.Walk(func(e *c.Element) {
+			if !e.Carried || e.Edge != nil {
+				return
+			}
+			if pe := prevByID[e.Identity()]; pe != nil {
+				if a, ok := prev.enter[pe]; ok && math.IsInf(a.Start, 1) {
+					waiting[e] = true
+					if p := e.ParentElement(); p != nil {
+						building[p] = true
+					}
+				}
+			}
+		})
+	}
+	linkAt := map[*c.Element]float64{} // links a walk draws as it reaches the next part
 	for _, st := range sc.Steps {
 		if st.Verb == "show" && st.Target != nil {
 			for _, e := range c.Select(sc.Root, st.Target) {
@@ -247,7 +277,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	showing := false // place is entering an element for a show step
 	var place func(e *c.Element, start float64)
 	place = func(e *c.Element, start float64) {
-		if e.Carried || e.Edge != nil || (waiting[e] && !showing) {
+		if (e.Carried && !showing) || e.Edge != nil || (waiting[e] && !showing) {
 			return
 		}
 		mode := prop(e, "enter", "fade")
@@ -280,9 +310,21 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	connect := func(e *c.Element, from float64) float64 {
 		start := from
 		for _, end := range endsOf(sc, e) {
-			if a, ok := sp.enter[end]; ok {
+			a, ok := sp.enter[end]
+			if !ok && inWaiting(end) { // an end never shown: the link stays hidden
+				start = math.Inf(1)
+				continue
+			}
+			if ok {
 				start = math.Max(start, a.end())
 			}
+		}
+		if at, ok := linkAt[e]; ok && !math.IsInf(start, 1) {
+			start = at
+		}
+		if math.IsInf(start, 1) {
+			sp.enter[e] = Anim{Mode: "fade", Start: math.Inf(1)}
+			return 0
 		}
 		mode := prop(e, "enter", "draw")
 		a := Anim{Mode: mode, Start: start, Dur: modeDur(mode, tm)}
@@ -290,7 +332,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		return a.end()
 	}
 	sc.Root.Walk(func(e *c.Element) {
-		if e.Edge == nil || e.Carried {
+		if e.Edge == nil {
 			return
 		}
 		for _, end := range endsOf(sc, e) {
@@ -298,6 +340,9 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				later = append(later, e)
 				return
 			}
+		}
+		if e.Carried {
+			return
 		}
 		if o := e.OwnerElement(); o != nil && inWaiting(o) {
 			later = append(later, e)
@@ -376,7 +421,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				dur = math.Max(dur, modeDur(prop(e, "enter", "fade"), tm))
 			}
 		case "walk":
-			dur = float64(len(st.Args)) * .45
+			dur = float64(len(st.Args)) * walkStep(targets, building)
 		case "type":
 			chars := 0
 			for _, e := range targets {
@@ -486,10 +531,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		case "show":
 			showing = true
 			for _, e := range targets {
+				if e.Carried && !waiting[e] {
+					continue // already on screen from the last scene
+				}
 				place(e, start)
 			}
 			showing = false
 		case "walk":
+			step := walkStep(targets, building)
 			for _, e := range targets {
 				var prev *c.Element
 				for k, id := range st.Args {
@@ -497,7 +546,19 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					if node == nil {
 						continue
 					}
-					at := start + float64(k)*.45
+					at := start + float64(k)*step
+					// building the diagram: the link into a new part draws
+					// first, then the part appears where it lands
+					if _, in := sp.enter[node]; waiting[node] && !in {
+						if prev != nil {
+							if link := linkBetween(e, prev, node); link != nil {
+								linkAt[link] = at - step*0.5
+							}
+						}
+						showing = true
+						place(node, math.Max(0, at-0.15))
+						showing = false
+					}
 					sp.changes[node] = append(sp.changes[node], StateChange{El: node, From: state(node), To: "focus", Start: at, Dur: tm.State})
 					if prev != nil {
 						if link := linkBetween(e, prev, node); link != nil {
@@ -540,6 +601,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		t = math.Max(t, start+dur)
 		if !st.With && !onWord {
 			t = start + dur
+		}
+	}
+	// parts waiting for a show or walk that never came stay off screen
+	for e := range waiting {
+		if _, in := sp.enter[e]; !in {
+			sp.enter[e] = Anim{Mode: "fade", Start: math.Inf(1)}
 		}
 	}
 	for _, e := range later {
@@ -812,4 +879,15 @@ func playTo(e *c.Element, v string) float64 {
 		}
 	}
 	return clamp(f)
+}
+
+// walkStep is the time between the parts a walk visits: longer while it is
+// building a diagram, so each new part has time to land.
+func walkStep(targets []*c.Element, building map[*c.Element]bool) float64 {
+	for _, e := range targets {
+		if building[e] {
+			return .8
+		}
+	}
+	return .45
 }

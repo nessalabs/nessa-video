@@ -56,8 +56,10 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   time: after the `say` line, start each highlight with `on="the words"`
   (`focus #log on="grant log"`) and dim what was shown before.
 - Draw as you talk: `show #x on="the words"` brings an element in as it is
-  named, and `play #seq to=2 on="…"` reveals a sequence diagram message by
-  message as each one is told. Don't put everything on screen at once.
+  named, `play #seq to=2 on="…"` reveals a sequence diagram message by
+  message, and a flowchart with `reveal=steps fit=false` grows box by box
+  as each `walk … on="…"` explains it. Don't put everything on screen at
+  once.
 - Animate what changes (a pointer moves, a message is sent, a step runs).
   Keep structure still. At most about seven labelled things on screen.
 - Show code only when its exact text is the point: an API shape, a config

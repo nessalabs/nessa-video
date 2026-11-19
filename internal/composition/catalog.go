@@ -42,7 +42,7 @@ var Props = []string{
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
-	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context", "speak", "model", "on", "to",
+	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context", "speak", "model", "on", "to", "reveal",
 }
 
 // IsVerb reports whether k names a step.
@@ -92,7 +92,7 @@ var KindProps = map[string]string{
 	"array":    `values... ptr="lo=0 hi=7"`,
 	"chart":    `bar|line, indented CSV with a header row`,
 	"timeline": `unit=, indented lanes: label | 0-18 text | *18-22 strong`,
-	"mermaid":  `indented flowchart LR|TD or sequenceDiagram (participant, ->>, -->>, -x, Note, alt/else/opt/loop/par/end, autonumber)`,
+	"mermaid":  `reveal=steps (start empty; walk and show add parts), indented flowchart LR|TD or sequenceDiagram (participant, ->>, -->>, -x, Note, alt/else/opt/loop/par/end, autonumber)`,
 	"math":     `"TeX" size=`,
 	"row":      `gap= align= justify= pad= dir= fit=`,
 	"col":      `gap= align= justify= pad= dir= fit=`,

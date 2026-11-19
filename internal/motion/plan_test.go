@@ -52,7 +52,7 @@ scene one
 	if ap := sp.At(0).Look(a); ap.Draw != 0 || ap.Opacity != 0 {
 		t.Errorf("#a before entering = %+v", ap)
 	}
-	// #a draws (theme default for box) starting at the lead time
+	// #a fades in (theme default for box) starting at the lead time
 	if ap := sp.At(tm.Lead + tm.Draw).Look(a); ap.Draw != 1 || ap.Opacity != 1 {
 		t.Errorf("#a after drawing = %+v", ap)
 	}
@@ -64,8 +64,8 @@ scene one
 	// the connector draws after both ends; steps start after entering ends
 	edge := el(t, sp.Scene, "edge")
 	ea := sp.enter[edge]
-	if !near(ea.Start, tm.Lead+tm.Draw) {
-		t.Errorf("edge starts at %v, want %v", ea.Start, tm.Lead+tm.Draw)
+	if !near(ea.Start, tm.Lead+tm.Fade) { // boxes fade in; the connector draws after
+		t.Errorf("edge starts at %v, want %v", ea.Start, tm.Lead+tm.Fade)
 	}
 	stepStart := ea.Start + tm.Draw + 0.15
 	ch := sp.changes[a]

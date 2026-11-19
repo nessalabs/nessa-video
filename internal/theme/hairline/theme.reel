@@ -59,17 +59,17 @@ tokens
 
 style
   *          enter=fade exit=fade state=rest
-  edge       enter=draw exit=draw
-  box        enter=draw
-  card       enter=draw
-  circle     enter=draw
-  decision   enter=draw
-  store      enter=draw
+  edge       enter=draw exit=fade
+  box        enter=fade
+  card       enter=fade
+  circle     enter=fade
+  decision   enter=fade
+  store      enter=fade
   title      enter=rise exit=rise font=sans-600
   label      font=mono color=ink-3
   code       font=mono
   terminal   font=mono
-  array      enter=draw
+  array      enter=fade
   chart      enter=draw
   timeline   enter=draw
   process/name  font=sans-500 size=16 color=ink
