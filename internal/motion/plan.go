@@ -114,7 +114,7 @@ type ScenePlan struct {
 	marks    map[*c.Element][]Mark
 	ptrs     map[*c.Element][]PointerMove
 	swaps    map[*c.Element][]SwapMove
-	plays    map[*c.Element]Anim
+	plays    map[*c.Element][]PlaySeg
 	endState map[*c.Element]string // by identity
 	endCam   *c.Element            // identity
 	closeAt  float64               // when exits for the next scene's clear begin; 0 if none
@@ -189,7 +189,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		types: map[*c.Element]Anim{}, initial: map[*c.Element]string{}, changes: map[*c.Element][]StateChange{},
 		marks: map[*c.Element][]Mark{},
 		ptrs:  map[*c.Element][]PointerMove{}, swaps: map[*c.Element][]SwapMove{},
-		plays:    map[*c.Element]Anim{},
+		plays:    map[*c.Element][]PlaySeg{},
 		endState: map[*c.Element]string{}}
 
 	// carried elements keep their state and the camera keeps its target
@@ -222,12 +222,32 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		sp.camInit = byIdentity[prev.endCam]
 	}
 
+	// elements a show step names wait for it instead of entering now
+	waiting := map[*c.Element]bool{}
+	for _, st := range sc.Steps {
+		if st.Verb == "show" && st.Target != nil {
+			for _, e := range c.Select(sc.Root, st.Target) {
+				waiting[e] = true
+			}
+		}
+	}
+	// inWaiting reports whether e, or something holding it, waits for show
+	inWaiting := func(e *c.Element) bool {
+		for x := e; x != nil; x = x.ParentElement() {
+			if waiting[x] {
+				return true
+			}
+		}
+		return false
+	}
+
 	// entering: new top-level elements one after another, parts staggered
 	cursor := tm.Lead
 	var enterEnd float64
+	showing := false // place is entering an element for a show step
 	var place func(e *c.Element, start float64)
 	place = func(e *c.Element, start float64) {
-		if e.Carried || e.Edge != nil {
+		if e.Carried || e.Edge != nil || (waiting[e] && !showing) {
 			return
 		}
 		mode := prop(e, "enter", "fade")
@@ -254,12 +274,11 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		place(e, cursor)
 		cursor += tm.Stagger
 	}
-	// connectors draw once both ends are visible
-	sc.Root.Walk(func(e *c.Element) {
-		if e.Edge == nil || e.Carried {
-			return
-		}
-		start := tm.Lead
+	// connectors draw once both ends are visible; those touching an element
+	// that waits for show are timed after the steps
+	var later []*c.Element
+	connect := func(e *c.Element, from float64) float64 {
+		start := from
 		for _, end := range endsOf(sc, e) {
 			if a, ok := sp.enter[end]; ok {
 				start = math.Max(start, a.end())
@@ -268,7 +287,23 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		mode := prop(e, "enter", "draw")
 		a := Anim{Mode: mode, Start: start, Dur: modeDur(mode, tm)}
 		sp.enter[e] = a
-		enterEnd = math.Max(enterEnd, a.end())
+		return a.end()
+	}
+	sc.Root.Walk(func(e *c.Element) {
+		if e.Edge == nil || e.Carried {
+			return
+		}
+		for _, end := range endsOf(sc, e) {
+			if inWaiting(end) {
+				later = append(later, e)
+				return
+			}
+		}
+		if o := e.OwnerElement(); o != nil && inWaiting(o) {
+			later = append(later, e)
+			return
+		}
+		enterEnd = math.Max(enterEnd, connect(e, tm.Lead))
 	})
 
 	// steps
@@ -336,6 +371,10 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			dur = .6
 		case "play":
 			dur = 2
+		case "show":
+			for _, e := range targets {
+				dur = math.Max(dur, modeDur(prop(e, "enter", "fade"), tm))
+			}
 		case "walk":
 			dur = float64(len(st.Args)) * .45
 		case "type":
@@ -356,6 +395,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				h, _ := seconds(st.Args[0])
 				hold += h
 			}
+		}
+		// a play started while a line is spoken lasts the rest of the line,
+		// so a diagram unfolds as it is talked through
+		_, stepwise := st.Lookup("to")
+		if st.Verb == "play" && stepwise {
+			dur = .8 // one step of a diagram told piece by piece
+		} else if st.Verb == "play" && line != nil && start >= line.start && start < line.start+line.speech {
+			dur = math.Max(1, line.start+line.speech-start)
 		}
 		if v, ok := st.Lookup("for"); ok {
 			if d, ok := seconds(v); ok {
@@ -426,8 +473,22 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 		case "play":
 			for _, e := range targets {
-				sp.plays[e] = Anim{Mode: "play", Start: start, Dur: dur}
+				from := 0.0
+				if segs := sp.plays[e]; len(segs) > 0 {
+					from = segs[len(segs)-1].To
+				}
+				to := 1.0
+				if v, ok := st.Lookup("to"); ok {
+					to = playTo(e, v)
+				}
+				sp.plays[e] = append(sp.plays[e], PlaySeg{Start: start, Dur: dur, From: from, To: to})
 			}
+		case "show":
+			showing = true
+			for _, e := range targets {
+				place(e, start)
+			}
+			showing = false
 		case "walk":
 			for _, e := range targets {
 				var prev *c.Element
@@ -480,6 +541,9 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		if !st.With && !onWord {
 			t = start + dur
 		}
+	}
+	for _, e := range later {
+		connect(e, 0)
 	}
 	sp.stepsEnd = t
 	sp.Dur = math.Max(t+tm.Hold+hold, captionNeed+0.5)
@@ -711,4 +775,41 @@ func (l *spokenLine) at(phrase string) float64 {
 		return l.start
 	}
 	return l.start + math.Max(0, l.speech*float64(k)/float64(len(words))-HighlightLead)
+}
+
+// PlaySeg moves a block's playhead from one place to another, 0 to 1.
+type PlaySeg struct {
+	Start, Dur, From, To float64
+}
+
+// playTo turns a play step's to= into a playhead position: a count of rows
+// for a sequence diagram, a time for a timeline, else a fraction.
+func playTo(e *c.Element, v string) float64 {
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 1
+	}
+	switch {
+	case e.Sequence != nil:
+		rows := 0
+		for _, it := range e.Sequence.Items {
+			if it.Kind != "close" {
+				rows++
+			}
+		}
+		if rows > 0 {
+			return clamp(f / float64(rows))
+		}
+	case e.Timeline != nil:
+		end := 0.0
+		for _, l := range e.Timeline.Lanes {
+			for _, sp := range l.Spans {
+				end = math.Max(end, sp.To)
+			}
+		}
+		if end > 0 {
+			return clamp(f / end)
+		}
+	}
+	return clamp(f)
 }

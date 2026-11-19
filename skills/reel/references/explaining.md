@@ -51,13 +51,57 @@ names where it comes from.
 - **Length**: engagement falls off past about six minutes and is highest
   under three (Guo, Kim & Rubin 2014; correlational).
 
-## Plain language
+## Plain language, for the ear
 
-Define a term before using it and keep using exactly that term (Julia
-Evans, "Patterns in confusing explanations"). Keep the real name so people
-can search for it, next to a plain description. Sentences average about 15
-words, at most 25 in writing and less when spoken (GOV.UK; Content Design
-London).
+- **Jargon costs even when defined.** Technical terms made text feel harder,
+  less interesting and less persuasive, and adding definitions did not
+  remove the cost (Bullock et al. 2019; Shulman et al. 2020). Leaving a term
+  out beats defining it.
+- **The writer cannot judge.** Experts badly underestimate what others do
+  not know, and knowing about the bias barely helps (Camerer, Loewenstein &
+  Weber 1989; Hinds 1999). An agent that has read the code is the expert
+  here, so check the words mechanically, not by feel.
+- **Plain words read as clearer and smarter.** Needlessly complex words
+  lower ratings of the text and the author (Oppenheimer 2006); readers,
+  judges included, understand plain versions faster and better (Kimble).
+- **Listening is harder than reading.** A listener cannot go back, so
+  working memory limits what they follow (Jiang & Farquharson 2018).
+  Broadcasters write one new idea per sentence, subject and verb first, no
+  stacked clauses (NPR Training). Announcing structure ("in three cases…
+  one… two…") helps recall (Richards & Chaudron 1986). Passive and unusual
+  word orders are misheard more (Ferreira 2003).
+- **Concrete beats abstract.** Concrete text is understood, enjoyed and
+  remembered better (Sadoski, Goetz & Fritz 1993; Sadoski et al. 2000).
+- **Analogies need care.** Comparing cases helps when the mapping is
+  explicit (Gentner, Loewenstein & Thompson 2003); a single loose analogy
+  can plant misconceptions (Spiro et al. 1989).
+
+### Writing rules for narration
+
+1. One new idea per sentence; about 15 words, never more than 25.
+2. Subject and verb in the first six words. Not "With a cursor, it…" but
+   "Your gateway sends its bookmark."
+3. Active voice, and name who acts: your gateway, the peer, the user.
+4. At most two new terms in a whole video. Everything else is described.
+5. Describe the idea first, then name it once: "it remembers the last
+   change it read; we'll call that its bookmark." Then always that word.
+6. Never read code names aloud: no `grants.subscribe`, `GrantLogFloor`,
+   `incarnation`, `head`, `tombstone`. Say what they do.
+7. Give every abstract claim a concrete case: "say it last read change 40".
+8. Count lists out loud: "in three cases. One… Two… Three…".
+9. Open with the point, end by saying it again.
+10. Use everyday words: "started over" not "new incarnation", "newest" not
+    "head", "removed" not "tombstoned", "connects" not "subscribes".
+11. Labels on screen follow the same rules; a code name may appear once,
+    small, beside its plain description, if a reviewer needs it.
+
+Before: "With a cursor, it sends only later records. Another incarnation, a
+position past the head, or one older than the log is refused."
+
+After: "Your gateway sends its bookmark. The peer sends only what came
+after it. A bookmark is turned down in three cases. One: the log has
+started over since. Two: it points past the newest change. Three: it points
+at changes the log has already dropped."
 
 ## Rules
 
@@ -70,6 +114,8 @@ London).
 | Highlight what is named, as it is named, one at a time | signalling; contiguity | `focus #x on="the words"` after the `say` |
 | Animate change, keep structure still, about 7 labelled things at most | animation; coherence | the writer |
 | Show code only when its exact text is the point, at most 12 rows | coherence; Pennington | `reel check` warns |
-| Name identifiers once, next to a plain name | pre-training; Evans | the writer |
+| Never read code names aloud; describe them | jargon; curse of knowledge | `reel check` warns |
+| Spoken sentences under 25 words, one idea each | listening; NPR | `reel check` warns |
+| At most two new terms per video, named once after a plain description | jargon; pre-training | the writer |
 | Two to four minutes; split a PR that does several things | length; Barnett | the writer |
 | No music under the voice | coherence | not supported, on purpose |

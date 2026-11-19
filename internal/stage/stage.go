@@ -644,7 +644,7 @@ func pointed(kind string) bool { return kind == "decision" || kind == "circle" }
 // The turn comes soon after the source, so links that fan out of one node
 // share a short trunk and each keeps a long final run for its label.
 func orthogonal(ka, kb string, a, b layout.Rect) [][2]float64 {
-	const gap, bend = 8.0, 24.0
+	const gap, bend = 1.0, 24.0 // ends touch the outline
 	flat := !pointed(ka) && !pointed(kb)
 	apartX := a.Right() <= b.X || b.Right() <= a.X
 	apartY := a.Bottom() <= b.Y || b.Bottom() <= a.Y
@@ -946,7 +946,7 @@ func (p *painter) detour(ea, eb *c.Element, a, b layout.Rect) [][2]float64 {
 	if parent == nil || parent != eb.ParentElement() {
 		return nil
 	}
-	const gap, lift = 8.0, 30.0
+	const gap, lift = 1.0, 30.0
 	horizontal := math.Max(a.Y, b.Y) < math.Min(a.Bottom(), b.Bottom())
 	vertical := math.Max(a.X, b.X) < math.Min(a.Right(), b.Right())
 	if !horizontal && !vertical {

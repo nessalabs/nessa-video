@@ -71,6 +71,7 @@ Steps run one after another after the scene's elements have entered.
 | --- | --- |
 | `focus`, `dim`, `active`, `select`, `trace`, `rest` `SELECTOR` | change state |
 | `leave SELECTOR` | play its exit |
+| `show SELECTOR` | draw it in now instead of when the scene opens; with `on="words"`, as it is named |
 | `say "heading"` | the scene's heading at the top; spoken when the video has a voice, with the spoken words as subtitles at the bottom; `say "short heading" speak="the spoken sentence"` is the usual form. The next step waits until the line is spoken; use `with` to run a step during it |
 | `camera zoom SELECTOR`, `camera reset` | move the view |
 | `send SELECTOR` | dot along the connector starting there |
@@ -78,7 +79,7 @@ Steps run one after another after the scene's elements have entered.
 | `mark SELECTOR lines=…` / `cells=…` | move a code or array focus; `lines=+12..+14,+20` takes several ranges |
 | `ptr #a lo=2` / `swap #a 0 3` | move pointers, swap cells |
 | `walk #flow A B C` | light diagram nodes in order |
-| `play #tl` | sweep a timeline playhead, or reveal a sequence diagram's rows |
+| `play #tl` | sweep a timeline playhead, or reveal a sequence diagram's rows; after a `say`, it unfolds over the rest of that line. `play #seq to=2 on="…"` reveals up to the second row, so each message appears as it is told |
 | `wait 1s`, `hold 2s` | pause; extend the end |
 
 Timing: `on="phrase"` starts a step just before the last `say` line

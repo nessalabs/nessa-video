@@ -44,13 +44,20 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   that; split the scene.
 - Captions are key phrases of eight words or fewer. Put the full sentence in
   `speak="…"`, never on screen.
-- Narration sentences: about 15 words, one idea each, active voice. Use one
-  term for one thing the whole way through.
+- Talk like a person, not a spec. Read the plain-language rules in
+  [explaining a change](references/explaining.md) before writing narration:
+  no code names aloud, at most two new terms per video, one idea per
+  sentence, subject first, everyday words, a concrete case for every
+  abstract claim, and lists counted out loud. `reel check` warns about code
+  names and long sentences.
 - Name a thing in plain words first. Show an identifier at most once, next
   to its plain name (`card "the position is past the head" title="CursorAhead"`).
 - Highlight exactly what the voice names, when it names it, one thing at a
   time: after the `say` line, start each highlight with `on="the words"`
   (`focus #log on="grant log"`) and dim what was shown before.
+- Draw as you talk: `show #x on="the words"` brings an element in as it is
+  named, and `play #seq to=2 on="…"` reveals a sequence diagram message by
+  message as each one is told. Don't put everything on screen at once.
 - Animate what changes (a pointer moves, a message is sent, a step runs).
   Keep structure still. At most about seven labelled things on screen.
 - Show code only when its exact text is the point: an API shape, a config

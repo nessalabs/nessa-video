@@ -105,6 +105,17 @@ arrives as the ear does. Word times come from the voice; with none, a
 word's place in the line stands in. Steps with `on=` never hold back the
 steps after them. `reel check` reports words the line does not say.
 
+Speaking is a step like any other, so drawing can follow it. `show #x
+on="the peer"` draws an element in, with its enter animation, as the words
+are said; until then it is not on screen, and connectors to it wait for it.
+`play #seq to=2 on="asks"` reveals a sequence diagram up to its second row
+(a timeline up to that time), and a later `play` carries on from there, so
+a diagram is drawn piece by piece as it is told.
+
+A `play` that starts while a line is spoken lasts the rest of that line, so
+a sequence diagram's messages or a timeline's playhead unfold as the voice
+talks them through. `for=` on the `play` overrides it.
+
 `for=` on a `say` sets its length instead. A scene lasts at least until its
 last line has been spoken, plus the usual hold.
 

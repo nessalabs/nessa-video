@@ -298,18 +298,33 @@ func (m Moment) Slots(e *c.Element) []float64 {
 // Playhead returns the playhead of a timeline: its share of the axis and
 // whether it is showing.
 func (m Moment) Playhead(e *c.Element) (float64, bool) {
-	a, ok := m.plan.plays[e]
-	if !ok || m.T < a.Start {
+	segs := m.plan.plays[e]
+	if len(segs) == 0 || m.T < segs[0].Start {
 		return 0, false
 	}
-	return clamp((m.T - a.Start) / a.Dur), true
+	pos := 0.0
+	for _, sg := range segs {
+		if m.T < sg.Start {
+			break
+		}
+		f := 1.0
+		if sg.Dur > 0 {
+			f = clamp((m.T - sg.Start) / sg.Dur)
+		}
+		pos = sg.From + (sg.To-sg.From)*f
+	}
+	return pos, true
 }
 
 // HasPlay reports whether the element has a play step in this scene, and
 // whether it has not started yet, so content it reveals can stay hidden.
 func (m Moment) HasPlay(e *c.Element) (Anim, bool) {
-	a, ok := m.plan.plays[e]
-	return a, ok && m.T < a.Start
+	segs := m.plan.plays[e]
+	if len(segs) == 0 {
+		return Anim{}, false
+	}
+	a := Anim{Mode: "play", Start: segs[0].Start, Dur: segs[0].Dur}
+	return a, m.T < a.Start
 }
 
 // Heading returns the scene's heading: the current say line's caption, the

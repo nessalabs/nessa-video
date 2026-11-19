@@ -122,3 +122,62 @@ func TestOpeningLineStartsEarly(t *testing.T) {
 		t.Errorf("opening line starts at %.2f; want while the scene draws in", s)
 	}
 }
+
+// A play started during a line unfolds over the rest of that line.
+func TestPlayFollowsTheLine(t *testing.T) {
+	r := resolve.Script("video \"t\"\nscene a\n  timeline #tl\n    a | 0-10 x\n  say \"Watch\" speak=\"one two three four five six\"\n  play #tl on=\"two\"\n")
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	r.Video.Scenes[0].Steps[0].Speech = 6
+	tl := New(r.Video, DefaultTimings()).Scenes[0].Timeline()
+	say, play := tl[0], tl[1]
+	if end := play.Start + play.Dur; !near(end, say.Start+6) {
+		t.Errorf("play ends at %.2f; want with the line at %.2f", end, say.Start+6)
+	}
+}
+
+// show draws an element in on a word; play to= reveals a diagram in steps.
+func TestShowAndStepwisePlay(t *testing.T) {
+	r := resolve.Script(`video "t"
+scene a
+  box #a "a"
+  box #b "b"
+  #a -> #b
+  mermaid #seq
+    sequenceDiagram
+      A->>B: one
+      B-->>A: two
+      A->>B: three
+      B-->>A: four
+  say "Watch" speak="first the box, then one, then the rest"
+  show #b on="box"
+  play #seq to=1 on="one"
+  play #seq on="rest"
+`)
+	if r.Diags.HasErrors() {
+		t.Fatal(r.Diags)
+	}
+	r.Video.Scenes[0].Steps[0].Speech = 4
+	sp := New(r.Video, DefaultTimings()).Scenes[0]
+	tl := sp.Timeline()
+	b := el(t, sp.Scene, "#b")
+	if op := sp.At(tl[1].Start - 0.05).Look(b).Opacity; op != 0 {
+		t.Errorf("#b visible (%.2f) before its show step", op)
+	}
+	if op := sp.At(tl[1].Start + tl[1].Dur + 0.05).Look(b).Opacity; op < 0.99 {
+		t.Errorf("#b not shown after its step: %.2f", op)
+	}
+	// the connector to #b draws once #b is in
+	edge := el(t, sp.Scene, "edge")
+	if a := sp.enter[edge]; a.Start < tl[1].Start {
+		t.Errorf("connector starts at %.2f, before #b shows at %.2f", a.Start, tl[1].Start)
+	}
+	seq := el(t, sp.Scene, "#seq")
+	if pos, _ := sp.At(tl[3].Start - 0.01).Playhead(seq); !near(pos, 0.25) {
+		t.Errorf("after to=1 of 4 rows the playhead is at %.2f, want 0.25", pos)
+	}
+	if pos, _ := sp.End().Playhead(seq); !near(pos, 1) {
+		t.Errorf("playhead at the end = %.2f, want 1", pos)
+	}
+}

@@ -114,7 +114,10 @@ These are warnings, never errors:
 - a line spoken slower than 130 or faster than 210 words a minute, once its
   real length is known from the voice;
 - more than 12 rows of code on screen, since code is a cue for a reviewer,
-  not the explanation.
+  not the explanation;
+- narration that reads out a code name (`camelCase`, `snake_case`,
+  `dotted.name`), since jargon costs listeners even when defined;
+- a spoken sentence longer than 25 words, since a listener cannot go back.
 
 ## Scene lengths
 

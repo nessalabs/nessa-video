@@ -22,7 +22,7 @@ var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid
 var Verbs = []string{
 	"focus", "dim", "active", "select", "trace", "rest", // states
 	"leave", "clear", // exits
-	"camera", "send", "type", "play", "walk", "swap", "mark", "ptr",
+	"camera", "send", "type", "play", "walk", "swap", "mark", "ptr", "show",
 	"say", "wait", "hold",
 }
 
@@ -42,7 +42,7 @@ var Props = []string{
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
-	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context", "speak", "model", "on",
+	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context", "speak", "model", "on", "to",
 }
 
 // IsVerb reports whether k names a step.
