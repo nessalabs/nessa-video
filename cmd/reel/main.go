@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/nessalabs/nessa-video/internal/app"
 	c "github.com/nessalabs/nessa-video/internal/composition"
@@ -20,6 +22,7 @@ import (
 	"github.com/nessalabs/nessa-video/internal/theme"
 	"github.com/nessalabs/nessa-video/internal/voice"
 	"github.com/nessalabs/nessa-video/internal/voice/elevenlabs"
+	"github.com/nessalabs/nessa-video/internal/voice/phonon"
 )
 
 const usage = `reel turns .reel scripts into explainer videos.
@@ -289,6 +292,8 @@ func renderCmd(args []string) int {
 					return nil, err
 				}
 				return voice.Cached{Voice: el, Dir: voice.CacheDir()}, nil
+			case "phonon":
+				return localVoice(spec)
 			case "silent":
 				return voice.Silent{}, nil
 			}
@@ -422,8 +427,53 @@ func offlineVoice(spec *c.VoiceSpec) voice.Voice {
 	switch spec.Engine {
 	case "elevenlabs":
 		return voice.Cached{Voice: voice.Offline{K: elevenlabs.KeyFor(spec.ID, spec.Model, spec.Tune)}, Dir: voice.CacheDir()}
+	case "phonon":
+		return voice.Cached{Voice: voice.Offline{K: phonon.KeyFor(spec.Model, spec.ID, spec.Tune)}, Dir: voice.CacheDir()}
 	case "silent":
 		return voice.Silent{}
 	}
 	return nil
+}
+
+// localVoice loads the Phonon model, fetching the pinned checkpoint and the
+// voice into the cache first unless model= names a folder of its own. The
+// model loads only when a line is not in the voice cache.
+func localVoice(spec *c.VoiceSpec) (voice.Voice, error) {
+	if !phonon.Available {
+		return nil, phonon.ErrNotBuilt
+	}
+	key := phonon.KeyFor(spec.Model, spec.ID, spec.Tune)
+	return voice.Cached{Voice: &lazyPhonon{spec: spec, key: key}, Dir: voice.CacheDir()}, nil
+}
+
+// lazyPhonon loads the model on the first line that needs speaking.
+type lazyPhonon struct {
+	spec *c.VoiceSpec
+	key  string
+	once sync.Once
+	v    *phonon.Voice
+	err  error
+}
+
+func (l *lazyPhonon) Key() string { return l.key }
+
+func (l *lazyPhonon) Speak(ctx context.Context, text string) (voice.Spoken, error) {
+	l.once.Do(func() {
+		dir, name := l.spec.Model, l.spec.ID
+		if dir == "" {
+			dir = phonon.DefaultDir()
+			f := phonon.Fetcher{Log: func(m string) { fmt.Fprintln(os.Stderr, m) }}
+			if name, l.err = f.Ensure(ctx, dir, name); l.err != nil {
+				return
+			}
+		}
+		if name == "" {
+			name = "default"
+		}
+		l.v, l.err = phonon.New(dir, name, l.spec.Tune, l.key)
+	})
+	if l.err != nil {
+		return voice.Spoken{}, l.err
+	}
+	return l.v.Speak(ctx, text)
 }

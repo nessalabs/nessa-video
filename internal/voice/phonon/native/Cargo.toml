@@ -1,0 +1,21 @@
+# A small C interface to Phonon (github.com/gradium-ai/xn-ptts) for reel's
+# voice adapter. It runs ptts's CPU engine on every platform, so the same
+# GGUF checkpoint works on macOS, Linux and Windows, and builds as a static
+# library that cgo links into the reel binary.
+[package]
+name = "reel-phonon"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+ptts = { version = "=0.7.1", features = ["hf"] }
+
+[profile.release]
+lto = false
+codegen-units = 1
+panic = "unwind"

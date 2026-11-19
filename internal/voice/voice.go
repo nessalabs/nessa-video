@@ -157,7 +157,7 @@ func (o Offline) Key() string { return o.K }
 func (Offline) Speak(context.Context, string) (Spoken, error) { return Spoken{}, ErrNotCached }
 
 // Engines lists the voice engines scripts can name.
-var Engines = []string{"elevenlabs", "silent"}
+var Engines = []string{"elevenlabs", "phonon", "silent"}
 
 // ErrNoKey is returned when an engine needs an API key that is not set.
 type ErrNoKey struct{ Env string }

@@ -3,11 +3,14 @@ id: narrate
 title: Narrate a video
 kind: flow
 status: implemented
-summary: With a voice set, each say line is spoken, captions follow the voice word by word, scenes stretch to fit the speech, and the MP4 gets an AAC audio track. ElevenLabs is the first voice; local models come later.
+summary: With a voice set, each say line is spoken, captions follow the voice word by word, scenes stretch to fit the speech, and the MP4 gets an AAC audio track. ElevenLabs is the hosted voice; Phonon runs locally inside reel.
 parent: reel
 sources:
   - internal/voice/voice.go
   - internal/voice/elevenlabs/elevenlabs.go
+  - internal/voice/phonon/fetch.go
+  - internal/voice/phonon/phonon.go
+  - internal/voice/phonon/native/src/lib.rs
   - internal/encode/aac/aac.go
   - internal/encode/mp4/mp4.go
   - internal/motion/plan.go
@@ -65,6 +68,27 @@ speaks the same words. Giving both, `say "short heading" speak="…"`, shows
 the short heading and speaks the longer sentence. `voice silent`
 times a script as if it were narrated, with no sound and no service, which is
 useful for tests.
+
+## Local voice
+
+`voice phonon Harper` narrates on this machine with Gradium's Phonon 31M
+English model (Apache-2.0): no account, no key, no network after the first
+use, and no cost per line. The runtime (ptts, MIT or Apache-2.0) is
+compiled into reel by a small Rust wrapper in
+`internal/voice/phonon/native`, which `make build` builds with cargo and
+links statically, adding about 8 MB to the binary.
+
+The model is not in the binary. The first narrated render downloads the
+pinned checkpoint, about 65 MB, and the chosen voice from Hugging Face into
+the cache (`~/Library/Caches/reel/phonon` on macOS); after that it runs
+offline. The catalog has about 100 voices; an unknown name lists the
+English ones. `model=/path/to/folder` uses a checkpoint folder of your own
+instead, and `temperature=` (0 to 2) varies the delivery. The same line is
+always spoken the same way, so cached and fresh renders match. Phonon
+reports no word timings, so subtitles follow estimated ones. On an Apple
+laptop CPU a three-minute walkthrough speaks in about ten seconds.
+
+A build without Rust (`go build`) has no local voice and says so.
 
 ## The API key
 

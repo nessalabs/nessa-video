@@ -67,9 +67,10 @@ for a chart, timeline or terminal; a timeline that shows order only takes
 
 ## Write the script
 
-- Narration is optional. If the person wants a voice, add
-  `voice elevenlabs VOICE_ID stability=0.4 style=0.3` with a conversational
-  built-in voice (Chris is `iP95p4xoKVk53GoZ742B`). Write every line as
+- Narration is optional. If the person wants a voice, add `voice phonon
+  Harper`: a local voice that needs no key or network after its first
+  download. For ElevenLabs instead, `voice elevenlabs VOICE_ID stability=0.4
+  style=0.3` with a built-in voice (Chris is `iP95p4xoKVk53GoZ742B`). Write every line as
   `say "short heading" speak="what you would say to a colleague"`: the
   heading shows at the top, and the spoken words show as subtitles at the
   bottom. Repeat a scene's heading on each of its lines.
