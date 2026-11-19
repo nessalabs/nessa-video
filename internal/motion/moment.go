@@ -350,3 +350,10 @@ func (m Moment) Subtitle() (words []c.SaidWord, elapsed, op float64) {
 	}
 	return words, elapsed, op
 }
+
+// GlideTime is how long carried elements take to move to their new places.
+const GlideTime = 0.7
+
+// Glide returns how far carried elements have moved from where the
+// previous scene left them (0) to their places in this scene (1).
+func (m Moment) Glide() float64 { return Ease(clamp(m.T / GlideTime)) }

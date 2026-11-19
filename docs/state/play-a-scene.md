@@ -92,8 +92,17 @@ makes this scene slightly longer.
 ## Across scenes
 
 Elements that stay on screen into the next scene do not enter again. They
-keep the state their last step gave them, and the camera keeps its target
-until a `camera` step moves it.
+keep the state their last step gave them, and an array keeps its pointers
+and marked cells. The camera keeps its target until a `camera` step moves
+it.
+
+A scene without `clear` keeps everything; `clear keep="#log"` keeps just
+the matching elements, lifted out of whatever held them, while the rest
+leaves at the end of the scene before. A kept element glides, over 0.7 s,
+from where it was on screen to its place in the new layout, growing or
+shrinking as the new scene needs, while new elements draw in around it.
+That is how one picture can carry a story across scenes: keep the diagram
+and add to it, rather than clearing and drawing a new one.
 
 ## How long a scene lasts
 

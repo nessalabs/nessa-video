@@ -30,7 +30,7 @@ const DefaultModel = "eleven_multilingual_v2"
 type Voice struct {
 	ID, Model, key string
 	Tune           map[string]float64 // stability, similarity, style, speed
-	Base           string // API base URL; tests point it at a local server
+	Base           string             // API base URL; tests point it at a local server
 	Client         *http.Client
 }
 

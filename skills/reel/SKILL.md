@@ -76,7 +76,10 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   local `.env`. If no key is available, render with `--mute`.
 - Use `==…==` for the two or three words of a heading that matter.
 - Use `camera zoom` or a new scene instead of crowding.
-- Start a scene with `clear` when its content is unrelated to the last one.
+- Keep one picture across scenes when the story continues: leave out
+  `clear` to keep everything, or `clear keep="#flow"` to keep one diagram.
+  Kept elements glide to their new place while new ones draw in beside
+  them. Use `clear` alone only when the next idea needs a new picture.
 - Prefer components (`laptop`, `server`, `process`, `db`, `queue`) and
   blocks (`mermaid`, `array`, `timeline`, `metric`, `card`) over
   hand-placed boxes.

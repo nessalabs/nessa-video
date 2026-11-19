@@ -92,6 +92,10 @@ type Result struct {
 	Content Rect // the laid-out content before Fit
 	// SeqX holds each sequence diagram's lifeline positions, from its left edge.
 	SeqX map[*c.Element][]float64
+	// Came holds, for each top-level element carried from the previous
+	// scene, where it was on screen when that scene ended, in design units
+	// after the camera. The stage glides it from there to its new place.
+	Came map[*c.Element]Rect
 }
 
 type engine struct {

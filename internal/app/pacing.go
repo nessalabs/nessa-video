@@ -13,8 +13,8 @@ import (
 // information, speech rate); skills/reel/references/explaining.md cites it
 // and docs/state/check-a-script.md describes the warnings.
 const (
-	MaxCaptionWords = 8   // a caption is a key phrase, not a transcript
-	MaxSceneWords   = 45  // narration per scene: about 15 s, one idea
+	MaxCaptionWords = 8  // a caption is a key phrase, not a transcript
+	MaxSceneWords   = 45 // narration per scene: about 15 s, one idea
 	MinWPM, MaxWPM  = 130, 210
 	MaxCodeRows     = 12 // rows of code on screen before it stops being a cue
 )

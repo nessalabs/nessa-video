@@ -444,8 +444,14 @@ func (r *resolver) scene(n *script.Node, prev *c.Element) *c.Scene {
 			}
 		}
 		for _, ch := range prev.Children {
-			if !cleared || (keep != nil && len(c.Select(ch, keep)) > 0) {
+			switch {
+			case !cleared:
 				s.Root.Append(ch.Clone())
+			case keep != nil:
+				// keep exactly what matched, lifted out of its container
+				for _, m := range outermost(c.Select(ch, keep)) {
+					s.Root.Append(m.Clone())
+				}
 			}
 		}
 	}
@@ -1322,4 +1328,26 @@ func (r *resolver) checkOn(s *c.Scene) {
 			r.diags.Errorf(st.Pos, fmt.Sprintf("the line says: %s", strings.Join(said, " ")), "the narration before this step never says %q", phrase)
 		}
 	}
+}
+
+// outermost drops elements nested inside another element of the list.
+func outermost(els []*c.Element) []*c.Element {
+	in := map[*c.Element]bool{}
+	for _, e := range els {
+		in[e] = true
+	}
+	var out []*c.Element
+	for _, e := range els {
+		nested := false
+		for p := e.ParentElement(); p != nil; p = p.ParentElement() {
+			if in[p] {
+				nested = true
+				break
+			}
+		}
+		if !nested {
+			out = append(out, e)
+		}
+	}
+	return out
 }

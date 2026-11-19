@@ -106,7 +106,7 @@ scene one
 
 func TestOnWordMustBeSaid(t *testing.T) {
 	for src, want := range map[string]string{
-		"video \"t\"\nscene s\n  box #a\n  focus #a on=\"x\"\n":                     "has no say line before it",
+		"video \"t\"\nscene s\n  box #a\n  focus #a on=\"x\"\n":                        "has no say line before it",
 		"video \"t\"\nscene s\n  box #a\n  say \"one two\"\n  focus #a on=\"three\"\n": "never says",
 	} {
 		if got := fmt.Sprint(resolve.Script(src).Diags); !strings.Contains(got, want) {

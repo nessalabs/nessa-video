@@ -101,6 +101,36 @@ func (s *Stage) Area() layout.Rect {
 	return layout.Rect{X: 64, Y: HeadingBand, W: dw - 128, H: dh - HeadingBand - SubtitleBand}
 }
 
+// Layouts places every scene of a plan and records where each carried
+// element was when the scene before ended, so it can glide to its new place.
+func (s *Stage) Layouts(p *motion.Plan) map[*c.Scene]layout.Result {
+	out := map[*c.Scene]layout.Result{}
+	area := s.Area()
+	for i, sp := range p.Scenes {
+		lay := s.Layout(sp.Scene)
+		if i > 0 {
+			prev := p.Scenes[i-1]
+			plast := out[prev.Scene]
+			_, cam, _ := prev.End().Camera()
+			z, cx, cy := s.view(plast, cam)
+			was := map[*c.Element]layout.Rect{}
+			prev.Scene.Root.Walk(func(e *c.Element) {
+				if r, ok := plast.Boxes[e]; ok {
+					was[e.Identity()] = layout.Rect{X: area.CX() + (r.X-cx)*z, Y: area.CY() + (r.Y-cy)*z, W: r.W * z, H: r.H * z}
+				}
+			})
+			lay.Came = map[*c.Element]layout.Rect{}
+			for _, e := range sp.Scene.Root.Children {
+				if r, ok := was[e.Identity()]; ok && e.Carried {
+					lay.Came[e] = r
+				}
+			}
+		}
+		out[sp.Scene] = lay
+	}
+	return out
+}
+
 // Layout places a scene's elements. Positions do not change while a scene
 // plays, so callers lay out once and paint many moments.
 func (s *Stage) Layout(sc *c.Scene) layout.Result {
@@ -143,6 +173,22 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 		Mul(render.Translate(-cx, -cy))
 
 	p := &painter{s: s, l: l, view: view, m: view, lay: lay, mo: m, opt: opt}
+	// carried elements glide from where the last scene left them
+	if g := m.Glide(); g < 1 && len(lay.Came) > 0 {
+		p.glide = map[*c.Element]render.Affine{}
+		for e, was := range lay.Came {
+			r, ok := lay.Boxes[e]
+			if !ok || r.W <= 0 {
+				continue
+			}
+			now := layout.Rect{X: area.CX() + (r.X-cx)*z, Y: area.CY() + (r.Y-cy)*z, W: r.W * z, H: r.H * z}
+			k := (was.W + (now.W-was.W)*g) / now.W
+			mx := was.CX() + (now.CX()-was.CX())*g
+			my := was.CY() + (now.CY()-was.CY())*g
+			gd := render.Translate(mx*scale, my*scale).Mul(render.Affine{k, 0, 0, k, 0, 0}).Mul(render.Translate(-now.CX()*scale, -now.CY()*scale))
+			p.glide[e] = gd
+		}
+	}
 	p.element(sc.Root, "rest", 1, 0)
 	sc.Root.Walk(func(e *c.Element) {
 		if e.Edge != nil {
@@ -188,8 +234,9 @@ type painter struct {
 	lay     layout.Result
 	mo      motion.Moment
 	opt     layout.Options
-	opacity float64 // multiplies every colour drawn
-	draw    float64 // stroke progress for the element being drawn
+	opacity float64                      // multiplies every colour drawn
+	glide   map[*c.Element]render.Affine // carried elements on their way, in frame pixels
+	draw    float64                      // stroke progress for the element being drawn
 }
 
 func (p *painter) stroke(d string, cl color.NRGBA, dash bool) {
@@ -317,6 +364,11 @@ func (p *painter) blend(from, to string, mix float64) look {
 func (p *painter) element(e *c.Element, inherited string, opacity, rise float64) {
 	if v, ok := e.Computed["hidden"]; ok && v.Value == "true" {
 		return
+	}
+	if g, ok := p.glide[e]; ok {
+		saved := p.view
+		p.view = g.Mul(saved)
+		defer func() { p.view = saved }()
 	}
 	ap := p.mo.Look(e)
 	opacity *= ap.Opacity
@@ -656,6 +708,9 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 	dashed := e.Edge.Op == "..>" || e.Edge.Op == ".." || lk.dash
 	head := e.Edge.Op != "--" && e.Edge.Op != ".."
 	p.m = p.view
+	if g, ok := p.glideOf(e, sc); ok {
+		p.m = g.Mul(p.view)
+	}
 	p.opacity = ap.Opacity
 	p.draw = ap.Draw
 
@@ -1054,4 +1109,24 @@ func (p *painter) subtitle(words []c.SaidWord, elapsed, cx, y float64, t layout.
 		p.text(texts[i], x, y, t, cl, render.Start)
 		x += widths[i] + space
 	}
+}
+
+// glideOf returns the glide of the carried element a connector belongs to:
+// the element that owns it, or the one it starts from.
+func (p *painter) glideOf(e *c.Element, sc *c.Scene) (render.Affine, bool) {
+	if len(p.glide) == 0 {
+		return render.Affine{}, false
+	}
+	start := e.OwnerElement()
+	if start == nil && e.Edge != nil && e.Edge.From != nil {
+		if ends := c.Select(sc.Root, e.Edge.From); len(ends) > 0 {
+			start = ends[0]
+		}
+	}
+	for x := start; x != nil; x = x.ParentElement() {
+		if g, ok := p.glide[x]; ok {
+			return g, true
+		}
+	}
+	return render.Affine{}, false
 }

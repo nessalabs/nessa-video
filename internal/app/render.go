@@ -75,10 +75,7 @@ func (vs Videos) Render(src string, out io.Writer, progress func(done, total int
 		applySpeech(v, speech)
 	}
 	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
-	lays := map[*c.Scene]layout.Result{}
-	for _, sp := range plan.Scenes {
-		lays[sp.Scene] = st.Layout(sp.Scene)
-	}
+	lays := st.Layouts(plan)
 
 	n := int(plan.Total*float64(v.FPS) + 0.5)
 	if n < 1 {

@@ -194,11 +194,27 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 
 	// carried elements keep their state and the camera keeps its target
 	byIdentity := map[*c.Element]*c.Element{}
+	prevByID := map[*c.Element]*c.Element{}
+	if prev != nil {
+		prev.Scene.Root.Walk(func(e *c.Element) { prevByID[e.Identity()] = e })
+	}
 	sc.Root.Walk(func(e *c.Element) {
 		byIdentity[e.Identity()] = e
 		if prev != nil && e.Carried {
 			if s, ok := prev.endState[e.Identity()]; ok {
 				sp.initial[e] = s
+			}
+			// pointers and marks stay where the last scene left them
+			if pe := prevByID[e.Identity()]; pe != nil {
+				for _, mv := range prev.ptrs[pe] {
+					mv.Start, mv.Dur = -1, 0
+					sp.ptrs[e] = append(sp.ptrs[e], mv)
+				}
+				if mk := prev.marks[pe]; len(mk) > 0 {
+					last := mk[len(mk)-1]
+					last.Start, last.Dur = -1, 0
+					sp.marks[e] = append(sp.marks[e], last)
+				}
 			}
 		}
 	})
@@ -491,19 +507,42 @@ func (sp *ScenePlan) planClearExits(next *c.Scene, tm Timings) {
 			kept[e.Identity()] = true
 		}
 	}
+	// holds reports whether e is kept or contains something kept
+	var holds func(e *c.Element) bool
+	holds = func(e *c.Element) bool {
+		if kept[e.Identity()] {
+			return true
+		}
+		for _, ch := range e.Children {
+			if holds(ch) {
+				return true
+			}
+		}
+		return false
+	}
 	var longest float64
 	sp.closeAt = sp.Dur
-	for _, e := range sp.Scene.Root.Children {
+	var leave func(e *c.Element)
+	leave = func(e *c.Element) {
 		if kept[e.Identity()] {
-			continue
+			return
+		}
+		if holds(e) { // a container of something kept: only its other parts leave
+			for _, ch := range e.Children {
+				leave(ch)
+			}
+			return
 		}
 		if _, gone := sp.exit[e]; gone {
-			continue
+			return
 		}
 		mode := prop(e, "exit", "fade")
 		d := modeDur(mode, tm)
 		sp.exit[e] = Anim{Mode: mode, Start: sp.Dur, Dur: d}
 		longest = math.Max(longest, d)
+	}
+	for _, e := range sp.Scene.Root.Children {
+		leave(e)
 	}
 	sp.Dur += longest
 }

@@ -75,6 +75,6 @@ func (s Stills) RenderAt(src string, t float64) (*image.RGBA, CheckReport, error
 	st := &stage.Stage{Tokens: v.Tokens, Measure: s.Measure, W: v.Width, H: v.Height}
 	sp, lt := rep.plan.At(t)
 	img := image.NewRGBA(image.Rect(0, 0, v.Width, v.Height))
-	err := s.Raster.Rasterize(st.Frame(sp.Scene, st.Layout(sp.Scene), sp.At(lt)), img)
+	err := s.Raster.Rasterize(st.Frame(sp.Scene, st.Layouts(rep.plan)[sp.Scene], sp.At(lt)), img)
 	return img, rep, err
 }
