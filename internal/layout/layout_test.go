@@ -132,3 +132,33 @@ func TestKeepsRowWhenScalingFitsBetter(t *testing.T) {
 		t.Errorf("fit = %v, want about 0.806", res.Fit)
 	}
 }
+
+func TestCardWrapsText(t *testing.T) {
+	r := resolve.Script("video \"t\"\nscene s\n  card #a \"one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen\" title=\"file.rs\"\n  card #b \"short\"\n  card #c \"one two three four five\" w=120\n")
+	root := r.Video.Scenes[0].Root
+	res := Scene(root, Rect{0, 0, 2000, 2000}, fixed{}, opts())
+	a := box(t, root, res, "#a")
+	la := res.Lines[c.Select(root, mustSel(t, "#a"))[0]]
+	if len(la) < 2 {
+		t.Fatalf("long card text not wrapped: %q", la)
+	}
+	if a.W > CardMaxText+2*CardPad+1e-6 {
+		t.Errorf("card is %v wide; want at most %v", a.W, CardMaxText+2*CardPad)
+	}
+	b := box(t, root, res, "#b")
+	if b.H >= a.H {
+		t.Errorf("one-line card (%v) should be shorter than the wrapped one (%v)", b.H, a.H)
+	}
+	if lc := res.Lines[c.Select(root, mustSel(t, "#c"))[0]]; len(lc) < 3 {
+		t.Errorf("w=120 should wrap narrower: %q", lc)
+	}
+}
+
+func mustSel(t *testing.T, s string) *selector.Selector {
+	t.Helper()
+	sel, err := selector.ParseSelector(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sel
+}

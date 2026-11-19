@@ -37,7 +37,7 @@ the line above. `# ` starts a comment. In quoted text, `\"` is a quote and
 
 | Kind | Notes |
 | --- | --- |
-| `box`, `card`, `circle`, `decision`, `store`, `stack` | shapes; text inside with `"…"` |
+| `box`, `card`, `circle`, `decision`, `store`, `stack` | shapes; text inside with `"…"`. A `card` wraps its text (about 250 wide, or `w=`) and takes `title="file.rs"` for a header above a rule |
 | `title`, `p`, `label` | text; `title "a ==b=="` brightens b |
 | `metric "1024" label="records kept" note="GRANT_LOG_RETAINED, share_grants.rs"` | a big number with a caption and where it comes from; `focus` underlines it |
 | `row`, `col`, `grid cols=N`, `layer`, `place` | layout: `gap`, `align`, `justify`, `pad`, `w`, `h`, `x`, `y` |

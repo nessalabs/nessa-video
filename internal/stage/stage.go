@@ -78,6 +78,7 @@ func (s *Stage) Options() layout.Options {
 			"metric":  t("sans500", "size-metric", 40),
 			"math":    t("sans400", "size-math", 30),
 			"box":     t("sans500", "size-box", 15),
+			"card":    t("sans400", "size-card", 15),
 			"caption": t("sans400", "size-caption", 20),
 		},
 		Gap:       s.num("gap", 24),
@@ -477,7 +478,9 @@ func (p *painter) shape(e *c.Element, r layout.Rect, lk look, ap motion.Appearan
 		d = rr(layout.Rect{X: r.X, Y: r.Y + 12, W: r.W - 12, H: r.H - 12}, radius)
 	case "card":
 		d = rr(r, 10)
-		p.stroke(fmt.Sprintf("M%g %gH%g", r.X, r.Y+28, r.Right()), p.s.col("line-0"), false)
+		if str(e, "title") != "" {
+			p.stroke(fmt.Sprintf("M%g %gH%g", r.X, r.Y+layout.CardHead, r.Right()), p.s.col("line-0"), false)
+		}
 	default:
 		d = rr(r, radius)
 	}
@@ -496,13 +499,19 @@ func (p *painter) shape(e *c.Element, r layout.Rect, lk look, ap motion.Appearan
 	if lk.dot {
 		p.fill(circle(r.X+12, r.Y+12, 3), p.s.col("hi"))
 	}
-	if e.Text != "" {
-		t := layout.TypeOf(e, p.opt)
-		if kind == "card" {
-			p.runs(e.Text, r.X+12, r.Y+19, layout.Type{Font: "sans500", Size: 13}, lk.text, p.s.col("hi"), render.Start)
-		} else {
-			p.runs(e.Text, r.CX(), r.CY()+t.Size*0.36, t, lk.text, p.s.col("hi"), render.Middle)
+	if kind == "card" {
+		top := r.Y + layout.CardPad
+		if title := str(e, "title"); title != "" {
+			p.runs(title, r.X+layout.CardPad, r.Y+19, layout.Type{Font: "sans500", Size: 13}, p.s.col("ink-3"), p.s.col("hi"), render.Start)
+			top += layout.CardHead
 		}
+		t := layout.TypeOf(e, p.opt)
+		for i, ln := range p.lay.Lines[e] {
+			p.runs(ln, r.X+layout.CardPad, top+t.Size*(0.8+layout.CardLine*float64(i)), t, lk.text, p.s.col("hi"), render.Start)
+		}
+	} else if e.Text != "" {
+		t := layout.TypeOf(e, p.opt)
+		p.runs(e.Text, r.CX(), r.CY()+t.Size*0.36, t, lk.text, p.s.col("hi"), render.Middle)
 	}
 }
 
@@ -996,4 +1005,12 @@ func (p *painter) followWords(text string, times []c.WordTime, elapsed, cx, y fl
 		p.text(w.text, x, y, t, cl, render.Start)
 		x += widths[i] + space
 	}
+}
+
+// str returns an element's computed property, or "".
+func str(e *c.Element, key string) string {
+	if v, ok := e.Computed[key]; ok {
+		return v.Value
+	}
+	return ""
 }

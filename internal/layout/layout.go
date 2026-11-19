@@ -466,7 +466,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		}
 		return 120, 64
 	case kind == "card":
-		return 200, 120
+		return e.card(el)
 	case kind == "circle":
 		r := num(el, "r", 28)
 		return 2 * r, 2 * r
@@ -507,6 +507,42 @@ func (e *engine) text(el *c.Element) (float64, float64) {
 		return 0, 0
 	}
 	return w, line * float64(len(lines))
+}
+
+// Card sizes. Text wraps inside the card; title= sits above a rule.
+const (
+	CardPad     = 16.0 // around the body text
+	CardHead    = 28.0 // height of the title strip
+	CardMaxText = 248.0
+	CardLine    = 1.45 // body line height, in font sizes
+)
+
+// card wraps a card's text to its width (w= or a readable default) and
+// sizes the card to fit its title and body.
+func (e *engine) card(el *c.Element) (float64, float64) {
+	t := TypeOf(el, e.opt)
+	head := 0.0
+	w := 200.0
+	if title := str(el, "title", ""); title != "" {
+		head = CardHead
+		w = max(w, e.m.Measure(Plain(title), "sans500", 13)+2*12)
+	}
+	if el.Text == "" {
+		e.res.Lines[el] = nil
+		return w, head + 64
+	}
+	maxText := CardMaxText
+	if v := num(el, "w", 0); v > 0 {
+		maxText = v - 2*CardPad
+	}
+	lines := e.wrap(el.Text, t, maxText)
+	e.res.Lines[el] = lines
+	widest := 0.0
+	for _, l := range lines {
+		widest = max(widest, e.m.Measure(Plain(l), t.Font, t.Size))
+	}
+	w = max(w, widest+2*CardPad)
+	return w, head + 2*CardPad + t.Size*CardLine*float64(len(lines)) - t.Size*(CardLine-1)
 }
 
 func (e *engine) wrap(s string, t Type, maxW float64) []string {

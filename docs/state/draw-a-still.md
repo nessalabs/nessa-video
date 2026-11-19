@@ -67,11 +67,13 @@ which leaves room at the bottom for the caption.
 - `layer` stacks children on top of each other. `place` uses `x` and `y`.
 - A component is laid out as a centred column of its parts.
 - Text is measured with the embedded fonts, so boxes fit their labels.
-  Paragraphs wrap at 640 units.
+  Paragraphs wrap at 640 units. A card wraps its text at about 250 units,
+  or at its `w=`, and grows taller to fit; `title=` adds a header above a
+  rule.
 - `w` and `h` override any measured size.
 
-Connectors take no space. A row that is too wide for a 9:16 frame does not
-wrap yet.
+Connectors take no space. A row too wide for the frame is turned or scaled,
+as [Fit the frame](fit-the-frame.md) describes.
 
 ## Running the steps
 

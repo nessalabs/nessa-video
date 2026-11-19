@@ -77,7 +77,7 @@ func contains(xs []string, s string) bool {
 // what `reel ref` prints.
 var KindProps = map[string]string{
 	"box":      `"text" r= (corner radius)`,
-	"card":     `"title text"`,
+	"card":     `"text that wraps" title="header" w= (wrap width)`,
 	"circle":   `"text" r=`,
 	"decision": `"text"`,
 	"store":    `"text"`,
