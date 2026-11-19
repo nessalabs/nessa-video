@@ -609,6 +609,16 @@ func (e *engine) place(el *c.Element, r Rect) {
 		for k := 0; k+1 < len(kids); k++ {
 			used += e.gapAfter(kids[k], gap, horizontal)
 		}
+		// cards side by side read as a set: give them one height
+		if horizontal && str(el, "align", "") == "" && len(kids) > 1 {
+			cards := true
+			for _, k := range kids {
+				cards = cards && k.Kind() == "card"
+			}
+			if cards {
+				align = "stretch"
+			}
+		}
 		pos := inner.X
 		if !horizontal {
 			pos = inner.Y

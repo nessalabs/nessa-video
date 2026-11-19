@@ -12,17 +12,51 @@ scene as a picture, and `reel render` writes the MP4. Read
 
 ## Plan the story first
 
-A good video makes one point. For a code review, read the diff and the code
-around it, then pick the story in four beats or fewer:
+The video exists so a person understands the change with less effort than
+reading it. Explain with pictures of what the code does, not with the code.
+Read [explaining a change](references/explaining.md) for the research behind
+these rules. Read the diff and the code around it, then tell the story in
+this order, skipping a beat rather than padding it:
 
-1. The problem, shown with the code or flow that has it.
-2. The change, shown as a diff with the important lines focused.
-3. Why it works: a flow, a timeline, an array or a chart.
-4. Proof: a test run or a measured number, only if you have a real one.
+1. Names: the two to four project-specific things the rest relies on, each
+   with a plain name and a one-line meaning. Skip generic ideas such as
+   what a cache is.
+2. Problem: one concrete case of what went wrong or was missing, and how the
+   system behaved before, as a diagram.
+3. Mechanism: the new behaviour, traced with one concrete example first
+   (real values moving through an array or a sequence), then the rule.
+   Reuse the before diagram's shape and highlight only what changed.
+4. Edge cases: only the ones the change handles or a reviewer would ask
+   about, each as a concrete input.
+5. Evidence: tests and numbers from the PR or a real run, as metrics or
+   cards.
+
+If the PR does two independent things, say so up front and give each its
+own short arc. Leave out renames, formatting and moved files.
 
 Say only what the source shows. Never invent numbers, timings or test output
-for a chart, timeline or terminal. If you have no measurement, leave that
-beat out or label it plainly as an example.
+for a chart, timeline or terminal; a timeline that shows order only takes
+`unit=none`.
+
+## Show, then say
+
+- One idea per scene, at most about 45 spoken words. `reel check` warns past
+  that; split the scene.
+- Captions are key phrases of eight words or fewer. Put the full sentence in
+  `speak="…"`, never on screen.
+- Narration sentences: about 15 words, one idea each, active voice. Use one
+  term for one thing the whole way through.
+- Name a thing in plain words first. Show an identifier at most once, next
+  to its plain name (`card "the position is past the head" title="CursorAhead"`).
+- Highlight exactly what the voice names, when it names it, one thing at a
+  time: start the highlight with `with` on the line that names it, and dim
+  what was shown before.
+- Animate what changes (a pointer moves, a message is sent, a step runs).
+  Keep structure still. At most about seven labelled things on screen.
+- Show code only when its exact text is the point: an API shape, a config
+  key, a one-line fix. Then at most a few focused lines, in one scene.
+  `reel check` warns when more than 12 rows of code are on screen.
+- Aim for two to four minutes.
 
 ## Write the script
 
@@ -35,16 +69,15 @@ beat out or label it plainly as an example.
   (`say "…"` then `with mark #diff lines=+12..+14`). Never
   write an API key into a script; it comes from `ELEVENLABS_API_KEY` or a
   local `.env`. If no key is available, render with `--mute`.
-- One idea per scene and one caption per scene. Use `==…==` for the two or
-  three words that matter.
-- About six elements per scene at most. Use `camera zoom` or a new scene
-  instead of crowding.
+- Use `==…==` for the two or three words of a caption that matter.
+- Use `camera zoom` or a new scene instead of crowding.
 - Start a scene with `clear` when its content is unrelated to the last one.
 - Prefer components (`laptop`, `server`, `process`, `db`, `queue`) and
-  blocks (`diff`, `code`, `mermaid`, `timeline`) over hand-placed boxes.
-- Read diffs and source with `file=` rather than pasting them, so line
-  numbers match. Focus the lines you talk about with `focus=` or `mark`;
-  long hunks fold down to those lines automatically.
+  blocks (`mermaid`, `array`, `timeline`, `metric`, `card`) over
+  hand-placed boxes.
+- When code is the point, read it with `file=` rather than pasting it, so
+  line numbers match, and focus the lines with `focus=` or `mark`; long
+  hunks fold down to those lines automatically.
 - Show where a number comes from: `metric "1024" label="records kept"
   note="GRANT_LOG_RETAINED in share_grants.rs"`.
 - Keep the theme's look. Change a token only when asked, in a `tokens` block.

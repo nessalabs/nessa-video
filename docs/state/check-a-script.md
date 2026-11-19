@@ -9,6 +9,7 @@ sources:
   - internal/resolve/resolve.go
   - internal/resolve/resolve_test.go
   - internal/app/check.go
+  - internal/app/pacing.go
   - cmd/reel/main.go
 diagramLinks:
   Parsed: script-language
@@ -99,6 +100,21 @@ property or a style rule that names no known kind, are printed but do not fail
 the check. The same report is available as JSON with `--json`.
 
 Repeated problems from elements carried into later scenes are reported once.
+
+## Pacing warnings
+
+A clean script is also checked against what research on narrated diagrams
+says people can follow (cited in `skills/reel/references/explaining.md`).
+These are warnings, never errors:
+
+- a caption longer than 8 words, since viewers cannot read a sentence while
+  listening to another;
+- a scene that narrates more than about 45 words, since speech fades and
+  the start of a long passage is lost;
+- a line spoken slower than 130 or faster than 210 words a minute, once its
+  real length is known from the voice;
+- more than 12 rows of code on screen, since code is a cue for a reviewer,
+  not the explanation.
 
 ## Scene lengths
 

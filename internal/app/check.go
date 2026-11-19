@@ -87,6 +87,9 @@ func CheckWith(src, dir string, vo func(*c.VoiceSpec) voice.Voice) CheckReport {
 			}
 		}
 	}
+	if rep.OK {
+		lintPacing(v, &rep.Diags)
+	}
 	plan := motion.New(v, motion.TimingsFrom(v.Tokens))
 	rep.plan = plan
 	rep.Seconds = round1(plan.Total)
@@ -209,7 +212,9 @@ func (r CheckReport) FormatText(file string) string {
 			}
 		}
 		fmt.Fprintf(&b, "ok: %d scenes, %.1fs, %s, %d fps, theme %s", len(r.Scenes), r.Seconds, r.Size, r.FPS, r.Theme)
-		if warns > 0 {
+		if warns == 1 {
+			b.WriteString(", 1 warning")
+		} else if warns > 1 {
 			fmt.Fprintf(&b, ", %d warnings", warns)
 		}
 		b.WriteString("\n")
