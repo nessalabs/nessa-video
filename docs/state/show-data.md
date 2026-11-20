@@ -11,8 +11,12 @@ sources:
   - internal/motion/plan.go
   - internal/motion/moment.go
   - internal/stage/blocks.go
+  - internal/stage/data.go
+  - internal/motion/data.go
+  - internal/resolve/data.go
   - internal/render/canvas/canvas.go
   - examples/data-blocks.reel
+  - examples/data-motion.reel
 diagramLinks:
   Steps: play-a-scene
 ---
@@ -57,8 +61,51 @@ chart #c bar
 
 The first line names the columns: the row label, then one series per column.
 `chart bar` groups bars per row and `chart line` draws one line per series.
-The last series is drawn bright and earlier ones grey. Bars grow and lines
-trace as the chart enters. The axis rounds up to a tidy number.
+The axis rounds up to a tidy number close above the largest value the
+chart shows in the scene, counting values that `set` steps bring, so it
+never rescales while the chart moves.
+
+The look follows one rule: one accent colour at a time, everything else
+grey. A single series of bars is flat grey with its value above (or beside)
+each bar; `focus=ROW` draws one row in the accent at rest. With several
+series the last one is the bright grey. In a line chart the last series is
+the accent and the others grey. Numbers use steady-width digits, so a
+counting label never shifts.
+
+As the chart enters, its frame draws in, then bars grow one after another
+and lines trace left to right with a dot at their tip. Steps wait for that.
+
+```text
+chart #lat bar horizontal "p95 latency" unit=ms focus=/search
+  endpoint, p95
+  /checkout, 820
+  /search, 610
+set #lat /checkout=240
+sort #lat
+mark #lat row=/search
+```
+
+- `horizontal` runs bars left to right, labels on the left, values after
+  the bars. `unit=` follows each value; quoted text is a caption on the right.
+- `set #c ROW=240` eases that row's bar to the new value over 1.2 s while
+  its label counts; the row takes the accent and the rest go grey. One value
+  sets the last series, `ROW=1,2` every series. Row labels are the keys, so
+  a label with spaces cannot be set this way.
+- `sort #c` slides bars into order by their last series, largest first
+  (`sort #c asc` smallest first). Accented bars draw on top as they pass.
+- `mark #c row=ROW` moves the accent to another row.
+
+```text
+chart #rps line threshold="900 Capacity 900 rps" cross="Over capacity at {x} min"
+  min, Region B, Region A
+  0, 380, 260
+  ...
+```
+
+`threshold=` takes a value and a label and draws a dashed line across. Where
+each line first crosses it, a small ring grows once the line's tip gets
+there, labelled by `cross=`; `{x}` becomes the place on the x axis
+(interpolated when row labels are numbers).
 
 ## Timelines
 
@@ -71,7 +118,26 @@ play #tl for=2.5s
 
 Each line is a lane: a label, then spans as `from-to label`. A `*` marks a
 span as important, drawn bright; others are dashed. `play` sweeps a playhead
-across the axis.
+from 0 to the last span's end, showing the time above it; the span outlines
+draw in first and each span fills in as the playhead passes. The playhead
+fades once it reaches the end. Without `play`, spans draw in filled.
+
+```text
+mark #tl span=orders note="Slowest call: orders, 130 ms of 236 ms"
+```
+
+`mark … span=NAME` singles out the spans with that label (or the spans of
+the lane with that label): everything else dims, the span turns amber with
+its length beside it, and a readout line appears under the axis: `note=`, or
+the span's length against the whole. The timeline keeps room for the
+readout from the start, so nothing moves when it appears.
+
+## Tables in motion
+
+A `set` on a table cell cross-fades the old text into the new in place:
+every column is as wide as the widest text its cells take during the scene,
+so nothing reflows. A row brought in by `show` slides down into place with a
+soft highlight that fades after a moment while the rows below glide down.
 
 ## Diagrams
 

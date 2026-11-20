@@ -41,7 +41,7 @@ the line above. `# ` starts a comment. In quoted text, `\"` is a quote and
 | `title`, `p`, `label` | text; `title "a ==b=="` brightens b |
 | `metric "1024" label="records kept" note="GRANT_LOG_RETAINED, share_grants.rs"` | a big number with a caption and where it comes from; `focus` underlines it |
 | `row`, `col`, `grid cols=N`, `layer`, `place` | layout: `gap`, `align`, `justify`, `pad`, `w`, `h`, `x`, `y`; `flow=live` gives room only to children on screen, so `show`/`leave` inside it make the rest glide; `sides=left,right,bottom` (or `all`) draws those edges, e.g. an open bin |
-| `table` | rows of cells: each child is a `row`, its children the cells (`label` for a header, `p` for values). Columns line up, rules part the rows, and rows are live: `show`/`leave` a row, `set` a cell, `focus` a row to highlight it |
+| `table` | rows of cells: each child is a `row`, its children the cells (`label` for a header, `p` for values). Columns line up, rules part the rows, and rows are live: `show`/`leave` a row (a shown row slides in with a soft highlight that fades), `set` a cell, `focus` a row to highlight it |
 | `tree kind=binary` | each child is a node (`circle "50"`), a node's children its children; nodes never move when one is shown later, so `show #n90` grows the tree in place. In a binary tree a lone child goes left unless it has `side=right`. Lines from parent to child draw in with each node |
 | `meter "2" max=5` | load or fill as slots (`kind=bar` for a bar); `set #m "4"` fills it smoothly |
 | `badge "leader"` | a small tag pinned to the top right of the element it is written inside |
@@ -61,8 +61,8 @@ side by default), so it stays readable; folded runs show as "N lines".
 `reel check` warns when a focus names lines the block does not show.
 | `terminal` | indented lines; `$ ` starts a command |
 | `array 1 3 4` | `ptr="lo=0 hi=2"` (0-based) |
-| `chart bar` / `chart line` | indented CSV: header row, then `label, v1, v2` |
-| `timeline unit=ms` | indented lanes: `label | 0-18 wait | *18-22 done` (`*` = bright) |
+| `chart bar` / `chart line` | indented CSV: header row, then `label, v1, v2`. `chart bar horizontal` runs bars left to right with labels on the left. `unit=ms` follows each value label; bars are grey, `focus=ROW` draws one row in the accent. A line chart draws in left to right with a dot at each line's tip; `threshold="900 Capacity 900 rps"` draws a dashed line, and a ring marks where a line first crosses it, labelled by `cross="Over capacity at {x} min"` (`{x}` is the place on the x axis). Quoted text is a caption on the right |
+| `timeline unit=ms` | indented lanes: `label | 0-18 wait | *18-22 done` (`*` = bright). With a `play` step the outlines draw first and each span fills in as the playhead, which shows the time, passes |
 | `mermaid` | indented `flowchart LR`/`TD` (nodes become parts `#flow/ID`) or `sequenceDiagram` with `participant … as …`, `->>`, `-->>` (reply), `-x`, `Note over A: …`, `alt`/`else`/`opt`/`loop`/`par` … `end`, `autonumber` |
 | `math "TeX"` | formula |
 | `git` | indented commands, one per line: `commit a1`, `branch feature` (or `switch -c feature`), `checkout main`, `merge feature` (`merge feature ff` fast-forwards), `rebase main`; Mermaid `gitGraph` lines work too. Each branch gets its own lane and colour; `play #g` runs the commands one by one, `play #g to=4` up to the fourth |
@@ -91,9 +91,12 @@ Steps run one after another after the scene's elements have entered.
 | `move SELECTOR to=#y` | any element travels to `#y`'s place and stays; `move #x to=#z` continues from there, `move #x` goes home |
 | `send … carry=#req` | any element rides the connector instead of the dot (and comes back with `reply`); give it `travel=true` so it takes no room and is seen only while it rides |
 | `show SELECTOR from=#src` | the element flies out of `#src` as it appears (a value copied out of a tree into a list); it flies back on `return`. `leave #x to=#y` flies to `#y` as it goes |
-| `set SELECTOR "text"` | change an element's text in place (a counter, a value), cross-fading; `set #n "4"` on a `node` changes its value |
+| `set SELECTOR "text"` | change an element's text in place (a counter, a value), cross-fading; `set #n "4"` on a `node` changes its value; a table cell cross-fades in place without moving its column |
+| `set #chart ROW=240` | ease a chart row's bar (or point) to a new value while its label counts with steady digits; the row takes the accent. `ROW=1,2` sets every series |
+| `sort #chart` / `sort #chart asc` | slide a chart's bars into order by their last series, largest first unless `asc` |
 | `type SELECTOR` | type out a terminal, code or text block |
 | `mark SELECTOR lines=…` / `cells=…` | move a code or array focus; `lines=+12..+14,+20` takes several ranges |
+| `mark #chart row=ROW` / `mark #tl span=NAME note="…"` | move a chart's accent to one row; single out a timeline span (by its label or its lane's): the rest dims, the span turns amber with its length beside it, and a readout line (`note=`, or its length against the whole) appears under the axis |
 | `ptr #a lo=2` / `swap #a 0 3` | move pointers, swap cells |
 | `walk #flow A B C` | light diagram nodes in order; on a `mermaid #flow reveal=steps`, bring them in one by one as well |
 | `play #tl` | sweep a timeline playhead, or reveal a sequence diagram's rows; after a `say`, it unfolds over the rest of that line. `play #seq to=2 on="…"` reveals up to the second row, so each message appears as it is told |

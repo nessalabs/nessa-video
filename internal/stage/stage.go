@@ -539,7 +539,7 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	if opacity <= 0.002 {
 		return
 	}
-	rise += ap.Rise
+	rise += ap.Rise + p.rowSlide(e)
 	eff := func(s string) string {
 		if s == "rest" && (inherited == "dim" || inherited == "focus" || inherited == "down") {
 			return inherited
@@ -627,6 +627,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 			t := layout.TypeOf(e, p.opt)
 			p.draw = 1
 			p.opacity = opacity * ap.FillIn
+			if p.cellFade(e, r, t, base, hi, p.opacity) {
+				break
+			}
 			lines, fade := p.linesOf(e)
 			p.opacity *= fade
 			lines = reveal(lines, ap.Reveal)
@@ -1475,6 +1478,9 @@ func (p *painter) tableParts(e *c.Element, r layout.Rect, lk look, state string)
 	}
 	if (state == "focus" || state == "select") && lk.fill.A > 0 {
 		p.fill(rr(row, 0), lk.fill)
+	}
+	if g := p.rowGlow(e); g > 0 { // a row just shown
+		p.fill(rr(row, 0), alpha(p.s.col("hi"), .07*g))
 	}
 	if row.Y > tr.Y+1 {
 		p.stroke(fmt.Sprintf("M%g %gH%g", row.X, row.Y, row.Right()), p.s.col("line-0"), false)

@@ -108,6 +108,12 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   value that changes, and `send #lb to=#s2` to move a request along one
   connector. For a new structure, build it as a `define` on `flow=live`
   containers, `sides=`, `table`, `arrow` and connectors, not as a one-off layout.
+- For numbers that change, animate the data instead of redrawing it:
+  `set #lat /checkout=240` eases one bar and counts its label, `sort #lat`
+  slides the bars into their new order, `mark #lat row=/checkout` moves the
+  one accent colour; a line chart with `threshold=` marks where it crosses.
+  A timeline fills in behind `play`, and `mark #tl span=orders` singles out
+  the slow part with a readout.
 - For trees (search trees, heaps, file systems, org charts) use `tree`;
   write every node the story will need and `show` the ones added later,
   so nothing jumps. `walk #t n50 n70 n80` traces a search path.

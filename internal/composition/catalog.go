@@ -25,6 +25,7 @@ var Verbs = []string{
 	"fail", "recover", // the down state
 	"isolate", "return", // sub-scenes
 	"camera", "send", "ping", "move", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
+	"sort", // charts
 	"say", "wait", "hold",
 }
 
@@ -45,6 +46,7 @@ var Props = []string{
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
 	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "max", "aside", "backdrop", "keep", "from", "layout", "carry", "travel", "context", "speak", "model", "on", "to", "reveal",
+	"threshold", "cross", "row", // charts
 }
 
 // IsVerb reports whether k names a step.
@@ -96,8 +98,8 @@ var KindProps = map[string]string{
 	"diff":     `indented git diff or file= path= hunk=; focus=+12..+14 context=`,
 	"terminal": `indented lines; "$ " starts a command`,
 	"array":    `values... ptr="lo=0 hi=7"`,
-	"chart":    `bar|line, indented CSV with a header row`,
-	"timeline": `unit=, indented lanes: label | 0-18 text | *18-22 strong`,
+	"chart":    `bar [horizontal]|line, indented CSV with a header row; unit=ms (after value labels) focus=ROW (accent one row at rest) threshold="900 Capacity" (a dashed line; a ring marks where a line crosses it) cross="Over at {x} min"; set #c ROW=240 eases a bar and counts its label, sort #c [asc] reorders bars, mark #c row=ROW moves the accent`,
+	"timeline": `unit=, indented lanes: label | 0-18 text | *18-22 strong; play fills spans behind the playhead; mark #tl span=NAME note="…" singles a span out in amber with a readout under the axis`,
 	"mermaid":  `reveal=steps (start empty; walk and show add parts), indented flowchart LR|TD or sequenceDiagram (participant, ->>, -->>, -x, Note, alt/else/opt/loop/par/end, autonumber)`,
 	"math":     `"TeX" size=`,
 	"row":      `gap= align= justify= pad= dir= fit= flow=live (children not shown yet or gone take no room; the rest glide) sides=left,right,bottom (draw those edges)`,

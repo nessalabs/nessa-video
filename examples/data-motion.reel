@@ -1,0 +1,95 @@
+video "Data in motion"
+  size 1920x1080  fps 30
+  voice silent
+
+scene bars
+  chart #lat bar horizontal unit=ms
+    endpoint, p95 latency
+    /checkout, 820
+    /search, 610
+    /orders, 430
+    /login, 260
+    /profile, 180
+  say "Checkout is the slowest call"
+  mark #lat row=/checkout
+  say "After the fix it drops to 240 ms"
+  set #lat /checkout=240
+  wait 0.4s
+  sort #lat
+  say "and the slowest is now search"
+
+scene columns
+  clear
+  chart #q bar unit=k
+    day, queries
+    Mon, 42
+    Tue, 58
+    Wed, 51
+    Thu, 37
+    Fri, 64
+  say "Queries per day"
+  set #q Thu=71
+  sort #q asc
+
+scene lines
+  clear
+  chart #rps line threshold="900 Capacity 900 rps" cross="Over capacity at {x} min"
+    min, Region B, Region A
+    0, 380, 260
+    5, 420, 350
+    10, 400, 400
+    15, 450, 470
+    20, 430, 520
+    25, 470, 600
+    30, 460, 640
+    35, 490, 690
+    40, 470, 760
+    45, 500, 820
+    50, 480, 880
+    55, 510, 950
+    60, 500, 1010
+  say "Region A climbs past capacity"
+
+scene request
+  clear
+  timeline #tl unit=ms
+    Gateway | 0-236 request
+    API | 8-228 handler
+    Database | 24-58 users | 66-196 orders
+  say "One request, span by span"
+  play #tl for=3.6s
+  mark #tl span=orders note="Slowest call: orders, 130 ms of 236 ms"
+  say "The orders query takes most of it"
+
+scene users
+  clear
+  table #users
+    row
+      label "Name"
+      label "Plan"
+      label "Status"
+    row
+      p "Ada Lovelace"
+      p "Pro"
+      p "Active"
+    row
+      p "Alan Turing"
+      p "Free"
+      p "Active"
+    row #liskov
+      p "Barbara Liskov"
+      p "Team"
+      p "Invited"
+    row
+      p "Edsger Dijkstra"
+      p "Pro"
+      p "Paused"
+    row
+      p "Grace Hopper"
+      p "Team"
+      p #grace "Invited"
+  say "Grace accepts her invite"
+  set #grace "Active"
+  wait 0.6s
+  show #liskov
+  say "and Barbara joins the team"

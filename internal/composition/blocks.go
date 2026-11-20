@@ -1,5 +1,11 @@
 package composition
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 // Content blocks carry their own data. The resolve package fills them from
 // script text; the stage draws them.
 
@@ -17,9 +23,29 @@ type Pointer struct {
 
 // ChartBlock is a bar or line chart over labelled rows.
 type ChartBlock struct {
-	Kind   string   // "bar" or "line"
-	Series []string // names of the value columns
-	Rows   []ChartRow
+	Kind       string   // "bar" or "line"
+	Series     []string // names of the value columns
+	Rows       []ChartRow
+	Horizontal bool   // bars run left to right, one row per line
+	Unit       string // after each value label, e.g. "ms"
+	Focus      string // the row drawn in the accent at rest
+	// a dashed line across a line chart at Threshold, with its label; a
+	// ring marks where a line first crosses it, labelled Cross ({x} is
+	// where on the x axis)
+	HasThreshold   bool
+	Threshold      float64
+	ThresholdLabel string
+	Cross          string
+}
+
+// Row returns the index of the row labelled name, or -1.
+func (c *ChartBlock) Row(name string) int {
+	for i, r := range c.Rows {
+		if r.Label == name {
+			return i
+		}
+	}
+	return -1
 }
 
 // ChartRow is one category with one value per series.
@@ -32,6 +58,14 @@ type ChartRow struct {
 type TimelineBlock struct {
 	Unit  string // shown on the axis, e.g. "ms"
 	Lanes []Lane
+	// Readout leaves a line under the axis for what a `mark … span=` says
+	Readout bool
+}
+
+// Picks reports whether name singles out span s of lane l: it is the
+// span's label or its lane's.
+func (t *TimelineBlock) Picks(name string, l, s int) bool {
+	return t.Lanes[l].Spans[s].Label == name || t.Lanes[l].Label == name
 }
 
 // Lane is one row of a timeline.
@@ -74,4 +108,34 @@ type SeqItem struct {
 	Dashed   bool // a reply, drawn dashed
 	Arrow    bool // has an arrowhead
 	Cross    bool // ends in a cross (-x)
+}
+
+// DataDecls returns the row=value pairs of a `set` on a chart: its
+// declarations that are neither timing nor other known properties.
+func DataDecls(ds []Decl) []Decl {
+	var out []Decl
+	for _, d := range ds {
+		if !TimingProp(d.Key) && !IsProp(d.Key) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// ChartValues reads the value side of a chart `set`: one number for the
+// last series, or one per series separated by commas.
+func ChartValues(v string, series int) ([]float64, error) {
+	parts := strings.Split(v, ",")
+	if len(parts) != 1 && len(parts) != series {
+		return nil, fmt.Errorf("%q has %d values; give one, or %d", v, len(parts), series)
+	}
+	var out []float64
+	for _, p := range parts {
+		f, err := strconv.ParseFloat(strings.TrimSpace(p), 64)
+		if err != nil {
+			return nil, fmt.Errorf("bad value %q", p)
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }

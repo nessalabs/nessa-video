@@ -65,6 +65,11 @@ Narration: put "voice phonon" under the video line to narrate with the
 built-in local voice (Harper; no account or network needed), or
 "voice elevenlabs VOICE_ID" with ELEVENLABS_API_KEY set or in a .env file.
 
+Data moves too: "set #chart /checkout=240" eases a bar and counts its label,
+"sort #chart" slides bars into order, "play #tl" fills a timeline's spans
+behind its playhead and "mark #tl span=orders" singles one out; a set on a
+table cell cross-fades in place and a shown row slides in, highlighted.
+
 Minimal script:
   video "What a cache does"
     voice phonon

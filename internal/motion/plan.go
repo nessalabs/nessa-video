@@ -76,6 +76,8 @@ type Caption struct {
 type Mark struct {
 	Lines      source.Selection
 	Cells      []int
+	Names      []string // chart rows or timeline spans (row=, span=)
+	Note       string   // the readout a timeline shows for its span
 	Start, Dur float64
 }
 
@@ -180,6 +182,10 @@ type ScenePlan struct {
 	endCam     *c.Element            // identity
 	closeAt    float64               // when exits for the next scene's clear begin; 0 if none
 	stepsEnd   float64               // when the last step finishes
+
+	// chart sets, sorts and growth, and elements a show step brought in (data.go)
+	data map[*c.Element]*dataPlan
+	late map[*c.Element]bool
 }
 
 // Plan is the whole video's timeline.
@@ -276,6 +282,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					last.Start, last.Dur = -1, 0
 					sp.marks[e] = append(sp.marks[e], last)
 				}
+				sp.carryData(prev, pe, e)
 			}
 		}
 	})
@@ -352,7 +359,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		mode := prop(e, "enter", "fade")
 		a := Anim{Mode: mode, Start: start, Dur: modeDur(mode, tm)}
 		sp.enter[e] = a
-		enterEnd = math.Max(enterEnd, a.end())
+		enterEnd = math.Max(enterEnd, sp.planGrow(e, a))
 		stagger := tm.PartStagger
 		if v, ok := seconds(prop(e, "stagger", "")); ok {
 			stagger = v
@@ -567,6 +574,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				}
 			}
 		}
+		dur = dataDur(st, targets, dur)
 		if v, ok := st.Lookup("for"); ok {
 			if d, ok := seconds(v); ok {
 				dur = d
@@ -653,6 +661,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 		case "mark":
 			mk := Mark{Start: start, Dur: dur}
+			mk.Names, mk.Note = markNames(st)
 			if v, ok := st.Lookup("lines"); ok {
 				mk.Lines, _ = source.ParseSelection(v)
 			}
@@ -795,9 +804,11 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				if live(e) { // room opens while it fades in
 					sp.flow = append(sp.flow, FlowChange{El: e, In: true, Start: start, Dur: FlowTime})
 					place(e, start+FlowTime*0.4)
+					sp.noteShown(e)
 					continue
 				}
 				place(e, start)
+				sp.noteShown(e)
 				if v, ok := st.Lookup("from"); ok {
 					if sel, err := selector.ParseSelector(v); err == nil {
 						if src := c.Select(sc.Root, sel); len(src) > 0 {
@@ -807,7 +818,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				}
 			}
 			showing = false
+		case "sort":
+			sp.planData(st, targets, start, dur)
 		case "set":
+			if sp.planData(st, targets, start, dur) {
+				break
+			}
 			for _, e := range targets {
 				sp.sets = append(sp.sets, TextSet{El: e, Text: st.Text, Start: start, Dur: dur})
 				if !c.IsBuiltinKind(e.Kind()) && e.Text != "" {
@@ -894,6 +910,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	for _, e := range later {
 		connect(e, 0)
 	}
+	t = math.Max(t, enterEnd) // a chart still growing in holds the scene
 	sp.stepsEnd = t
 	sp.Dur = math.Max(t+tm.Hold+hold, captionNeed+0.5)
 	if sc.Duration > 0 {

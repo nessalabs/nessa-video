@@ -73,11 +73,36 @@ func (r *resolver) chart(e *c.Element, n *script.Node) {
 	cb := &c.ChartBlock{Kind: "bar"}
 	if len(e.Args) > 0 {
 		cb.Kind = e.Args[0]
+		for _, a := range e.Args[1:] {
+			if a == "horizontal" && cb.Kind == "bar" {
+				cb.Horizontal = true
+			} else {
+				r.diags.Errorf(n.Pos, "e.g. chart #c bar horizontal", "unknown chart option %q", a)
+			}
+		}
 		e.Args = nil
 	}
 	if cb.Kind != "bar" && cb.Kind != "line" {
 		r.diags.Errorf(n.Pos, "use chart bar or chart line", "unknown chart kind %q", cb.Kind)
 		return
+	}
+	if v, ok := n.Prop("unit"); ok {
+		cb.Unit = v
+	}
+	if v, ok := n.Prop("focus"); ok {
+		cb.Focus = v
+	}
+	if v, ok := n.Prop("threshold"); ok {
+		num, label, _ := strings.Cut(strings.TrimSpace(v), " ")
+		f, err := strconv.ParseFloat(num, 64)
+		if err != nil {
+			r.diags.Errorf(n.Pos, `e.g. threshold="900 Capacity 900 rps" (the value, then its label)`, "bad threshold %q", v)
+		} else {
+			cb.HasThreshold, cb.Threshold, cb.ThresholdLabel = true, f, strings.TrimSpace(label)
+		}
+	}
+	if v, ok := n.Prop("cross"); ok {
+		cb.Cross = v
 	}
 	var rows [][]string
 	for _, ln := range n.Raw {
@@ -111,6 +136,9 @@ func (r *resolver) chart(e *c.Element, n *script.Node) {
 			cr.Values = append(cr.Values, f)
 		}
 		cb.Rows = append(cb.Rows, cr)
+	}
+	if cb.Focus != "" && cb.Row(cb.Focus) < 0 {
+		r.diags.Errorf(n.Pos, "focus= names a row label", "chart has no row %q", cb.Focus)
 	}
 	e.Chart = cb
 }
