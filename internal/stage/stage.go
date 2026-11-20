@@ -18,7 +18,6 @@ import (
 	"github.com/nessalabs/nessa-video/internal/markup"
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
-	"github.com/nessalabs/nessa-video/internal/selector"
 	"github.com/nessalabs/nessa-video/internal/source"
 	"github.com/nessalabs/nessa-video/internal/source/syntax"
 )
@@ -786,15 +785,14 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 	// drawn in another pass and fade on their own
 	ap.Opacity *= p.held(e.OwnerElement())
 	ends := 1.0
-	for _, sel := range []*selector.Selector{e.Edge.From, e.Edge.To} {
-		scope := sc.Root
-		if o := e.OwnerElement(); o != nil {
-			scope = o
-		}
-		if sel != nil {
-			if els := c.Select(scope, sel); len(els) > 0 {
-				ends = math.Min(ends, p.mo.Look(els[0]).Opacity) // its own fade; the holder's is above
-			}
+	scope := sc.Root
+	if o := e.OwnerElement(); o != nil {
+		scope = o
+	}
+	from, to := e.Edge.Ends(scope)
+	for _, els := range [][]*c.Element{from, to} {
+		if len(els) > 0 {
+			ends = math.Min(ends, p.fadeWithin(els[0], scope))
 		}
 	}
 	ap.Opacity *= ends
@@ -1393,4 +1391,15 @@ func sidesPath(r layout.Rect, sides string) string {
 		fmt.Fprintf(&b, "L%g %g", corner[j][0], corner[j][1])
 	}
 	return b.String()
+}
+
+// fadeWithin is how faded el is by its own look and every container
+// between it and scope, whose own fade is counted elsewhere: a connector
+// to a box inside a row that leaves fades with the row.
+func (p *painter) fadeWithin(el, scope *c.Element) float64 {
+	f := 1.0
+	for x := el; x != nil && x != scope; x = x.ParentElement() {
+		f *= p.mo.Look(x).Opacity
+	}
+	return f
 }
