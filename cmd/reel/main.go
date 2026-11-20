@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,29 +24,60 @@ import (
 	"github.com/nessalabs/nessa-video/internal/voice"
 	"github.com/nessalabs/nessa-video/internal/voice/elevenlabs"
 	"github.com/nessalabs/nessa-video/internal/voice/phonon"
+	skill "github.com/nessalabs/nessa-video/skills/reel"
 )
 
 // version is set at build time: make build VERSION=v0.1.0.
 var version = "dev"
 
-const usage = `reel turns .reel scripts into explainer videos.
+const usage = `reel turns .reel scripts into explainer videos (MP4).
 
-Usage:
-  reel check [--json] [--timeline] [--explain SELECTOR] FILE
-  reel still [--scene NAME | --at SECONDS] [-o PATH] FILE
-  reel render [-o OUT.mp4] [--crf N] [--preset NAME] [--mute] FILE
-  reel themes
-  reel theme export NAME [DIR]
-  reel ref
-  reel version
+Workflow for agents and people:
+  1. Learn the script format:   reel skill          (how to plan and write a script)
+                                reel ref            (every element, step and property)
+  2. Write a .reel file. Start from the minimal script at the end of this help.
+  3. Check it:                  reel check FILE     exit 0 = ok, 1 = problems; each
+                                problem has a line number and a suggested fix.
+                                Add --json for machine-readable output.
+  4. Look at it:                reel still -o DIR FILE   one PNG per scene; read them.
+  5. Render it:                 reel render -o OUT.mp4 FILE
+  Fix what check reports and re-run until it passes before rendering.
 
 Commands:
-  check   Parse and resolve a script; report problems with line numbers.
-  still   Render how each scene looks once its steps have run, as PNG.
-  render  Render the whole script to an H.264 MP4 video.
-  themes  List the built-in theme packs.
-  theme export  Copy a built-in pack to DIR (default themes/NAME) to edit it.
-  ref     Print the built-in kinds, steps and properties.
+  check [--json] [--timeline] [--explain SELECTOR] FILE
+                Parse and resolve a script; report problems with line numbers.
+                --timeline lists when every step runs; --explain '#id' shows
+                where each property of an element came from.
+  still [--scene NAME | --at SECONDS] [-o PATH] FILE
+                Render how each scene looks once its steps have run, as PNG.
+  render [-o OUT.mp4] [--crf N] [--preset NAME] [--mute] FILE
+                Render the whole video. --mute skips narration.
+  skill         Print the reel skill: how to plan and write a good script.
+  skill install [DIR]
+                Install the skill for an agent (default ~/.claude/skills/reel).
+  ref           Print the built-in kinds, steps and properties.
+  themes        List the built-in theme packs.
+  theme export NAME [DIR]
+                Copy a built-in pack to DIR (default themes/NAME) to edit it.
+  version       Print the version.
+
+Narration: put "voice phonon" under the video line to narrate with the
+built-in local voice (Harper; no account or network needed), or
+"voice elevenlabs VOICE_ID" with ELEVENLABS_API_KEY set or in a .env file.
+
+Minimal script:
+  video "What a cache does"
+    voice phonon
+
+  scene hit
+    row gap=40
+      box #app "app"
+      box #cache "cache"
+    #app -> #cache
+    say "A ==cache hit==" speak="The app asks the cache first."
+    focus #cache on="cache first"
+
+More: https://github.com/nessalabs/nessa-video (docs/agents/README.md)
 `
 
 func main() {
@@ -72,6 +104,8 @@ func main() {
 		os.Exit(themeCmd(os.Args[2:]))
 	case "ref":
 		ref()
+	case "skill":
+		os.Exit(skillCmd(os.Args[2:]))
 	case "version", "--version", "-v":
 		fmt.Println("reel " + version)
 	case "-h", "--help", "help":
@@ -154,6 +188,57 @@ func ref() {
 	sec("Enter and exit modes", c.EnterModes)
 	sec("Properties", c.Props)
 	fmt.Println("Connectors\n  a -> b   a -| b   a ~> b   a ..> b   a <-> b   a -- b")
+}
+
+// skillCmd prints the skill, or with `install [DIR]` writes it where an
+// agent loads skills from.
+func skillCmd(args []string) int {
+	if len(args) == 0 {
+		main, _ := skill.Files.ReadFile("SKILL.md")
+		os.Stdout.Write(main)
+		refs, _ := fs.Glob(skill.Files, "references/*.md")
+		for _, r := range refs {
+			b, _ := skill.Files.ReadFile(r)
+			fmt.Printf("\n\n<!-- %s -->\n\n", r)
+			os.Stdout.Write(b)
+		}
+		return 0
+	}
+	if args[0] != "install" || len(args) > 2 {
+		fmt.Fprintln(os.Stderr, "usage: reel skill [install [DIR]]")
+		return 2
+	}
+	dir := ""
+	if len(args) == 2 {
+		dir = args[1]
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "reel:", err)
+			return 1
+		}
+		dir = filepath.Join(home, ".claude", "skills", "reel")
+	}
+	err := fs.WalkDir(skill.Files, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := skill.Files.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		dst := filepath.Join(dir, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(dst, b, 0o644)
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "reel:", err)
+		return 1
+	}
+	fmt.Println("installed the reel skill in", dir)
+	return 0
 }
 
 func printJSON(v any) {
