@@ -25,6 +25,9 @@ import (
 	"github.com/nessalabs/nessa-video/internal/voice/phonon"
 )
 
+// version is set at build time: make build VERSION=v0.1.0.
+var version = "dev"
+
 const usage = `reel turns .reel scripts into explainer videos.
 
 Usage:
@@ -34,6 +37,7 @@ Usage:
   reel themes
   reel theme export NAME [DIR]
   reel ref
+  reel version
 
 Commands:
   check   Parse and resolve a script; report problems with line numbers.
@@ -68,6 +72,8 @@ func main() {
 		os.Exit(themeCmd(os.Args[2:]))
 	case "ref":
 		ref()
+	case "version", "--version", "-v":
+		fmt.Println("reel " + version)
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:

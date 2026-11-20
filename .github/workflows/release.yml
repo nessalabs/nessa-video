@@ -1,0 +1,66 @@
+# Pushing a tag like v0.1.0 builds reel for macOS and Linux and publishes
+# the binaries as a GitHub release, with a checksums file.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-amd64 }
+          - { os: ubuntu-24.04, target: linux-amd64 }
+          - { os: ubuntu-24.04-arm, target: linux-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install x264
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install x264
+          else sudo apt-get update && sudo apt-get install -y libx264-dev; fi
+      - name: Build
+        run: make build VERSION=${{ github.ref_name }}
+      - name: Test
+        run: go test ./...
+      - name: Smoke test
+        run: |
+          ./bin/reel version
+          ./bin/reel check examples/cache-refresh.reel
+          ./bin/reel render -o smoke.mp4 --mute examples/cache-refresh.reel
+      - name: Package
+        run: |
+          name=reel-${{ github.ref_name }}-${{ matrix.target }}
+          mkdir "$name"
+          cp bin/reel LICENSE THIRD_PARTY_NOTICES.md README.md "$name"/
+          tar -czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: reel-*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum reel-*.tar.gz > checksums.txt
+          gh release create "${{ github.ref_name }}" reel-*.tar.gz checksums.txt \
+            --repo "${{ github.repository }}" --title "reel ${{ github.ref_name }}" --generate-notes

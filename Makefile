@@ -7,6 +7,8 @@
 X264_PREFIX ?= $(shell brew --prefix x264 2>/dev/null || echo /usr)
 X264_LIB    ?= $(firstword $(wildcard $(X264_PREFIX)/lib/libx264.a $(X264_PREFIX)/lib/*/libx264.a))
 
+VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 PHONON_DIR := internal/voice/phonon/native
 PHONON_LIB := $(CURDIR)/$(PHONON_DIR)/target/release/libreel_phonon.a
 
@@ -19,7 +21,7 @@ phonon:
 
 build: phonon
 	@test -n "$(X264_LIB)" || (echo "libx264.a not found; install x264 or set X264_LIB" && exit 1)
-	CGO_ENABLED=1 CGO_LDFLAGS="$(X264_LIB) $(PHONON_LIB)" go build -tags "x264static phonon" -trimpath -ldflags="-s -w" -o bin/reel ./cmd/reel
+	CGO_ENABLED=1 CGO_LDFLAGS="$(X264_LIB) $(PHONON_LIB)" go build -tags "x264static phonon" -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o bin/reel ./cmd/reel
 	@$(MAKE) --no-print-directory check-static
 
 # dev links x264 dynamically for faster rebuilds

@@ -8,6 +8,27 @@ Status: `reel check`, `reel still`, `reel render` and `reel ref` work.
 Code, diffs, arrays, charts, timelines, Mermaid flowcharts and maths are all
 drawn and can be animated.
 
+## Install
+
+On macOS (Apple silicon or Intel) or Linux (x86-64 or arm64):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nessalabs/nessa-video/main/install.sh | sh
+```
+
+It downloads the latest [release](https://github.com/nessalabs/nessa-video/releases),
+checks it against the release's checksums and installs `reel` into
+`/usr/local/bin` (or `~/.local/bin`). `REEL_VERSION=v0.1.0` picks a version
+and `REEL_DIR=…` a folder. Or download a `.tar.gz` from the releases page;
+on macOS, a binary downloaded in a browser needs
+`xattr -d com.apple.quarantine reel` before it runs. The local voice model
+downloads on first use.
+
+Releases are built by [the release workflow](.github/workflows/release.yml)
+when a `v*` tag is pushed.
+
+## Build from source
+
 ```sh
 make build                      # links x264 statically; needs x264 to build only
 ./bin/reel render examples/cache-refresh.reel
