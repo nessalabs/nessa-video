@@ -585,6 +585,21 @@ func (r *resolver) step(n *script.Node) c.Step {
 			}
 		}
 		return st
+	case "set":
+		var target *script.Arg
+		for i := range args {
+			if args[i].Quoted {
+				st.Text = args[i].Text
+			} else if target == nil {
+				target = &args[i]
+			}
+		}
+		if target == nil || st.Text == "" && !hasQuoted(args) {
+			r.diags.Errorf(n.Pos, `e.g. set #count "4"`, "set needs an element and its new quoted text")
+			return st
+		}
+		st.Target = r.parseSel(target.Text, target.Pos)
+		return st
 	case "wait", "hold":
 		if len(args) != 1 {
 			r.diags.Errorf(n.Pos, "e.g. `wait 0.5s`", "%s needs one duration", n.Kind)
@@ -917,10 +932,18 @@ func (r *resolver) checkValue(key, val string, pos diag.Pos) {
 		r.oneOf(val, pos, c.EnterModes, key+" mode")
 	case "state":
 		r.oneOf(val, pos, c.States, "state")
+	case "flow":
+		r.oneOf(val, pos, []string{"live", "fixed"}, "flow")
 	case "tone":
 		r.oneOf(val, pos, []string{"bad", "good", "warn", "info", "red", "green", "amber", "yellow", "blue"}, "tone")
 	case "dir":
-		r.oneOf(val, pos, []string{"row", "col", "LR", "RL", "TD", "TB"}, "direction")
+		r.oneOf(val, pos, []string{"row", "col", "LR", "RL", "TD", "TB", "right", "left", "down", "up"}, "direction")
+	case "sides":
+		for _, side := range strings.Split(val, ",") {
+			if !r.oneOf(strings.TrimSpace(side), pos, []string{"top", "right", "bottom", "left", "all"}, "side") {
+				break
+			}
+		}
 	case "hidden", "fit":
 		r.oneOf(val, pos, []string{"true", "false"}, key+" value")
 	case "for", "stagger":
@@ -1266,6 +1289,7 @@ func (r *resolver) windowCode(s *c.Scene) {
 
 func (r *resolver) validate(s *c.Scene) {
 	r.checkOn(s)
+	fanEdges(s)
 	seen := map[string]*c.Element{}
 	s.Root.Walk(func(e *c.Element) {
 		if id := e.ID(); id != "" {
@@ -1355,4 +1379,47 @@ func outermost(els []*c.Element) []*c.Element {
 		}
 	}
 	return out
+}
+
+func hasQuoted(args []script.Arg) bool {
+	for _, a := range args {
+		if a.Quoted {
+			return true
+		}
+	}
+	return false
+}
+
+// fanEdges turns a connector whose ends match several elements into one
+// connector per pair, so `#lb -> .server` reaches every server, including
+// ones a later step shows.
+func fanEdges(s *c.Scene) {
+	var edges []*c.Element
+	s.Root.Walk(func(e *c.Element) {
+		if e.Edge != nil && e.Edge.FromEl == nil && e.Edge.ToEl == nil {
+			edges = append(edges, e)
+		}
+	})
+	for _, e := range edges {
+		scope := s.Root
+		if o := e.OwnerElement(); o != nil {
+			scope = o
+		}
+		from, to := e.Edge.Ends(scope)
+		if len(from) < 2 && len(to) < 2 || len(from) == 0 || len(to) == 0 {
+			continue
+		}
+		for i, f := range from {
+			for j, t := range to {
+				if f == t {
+					continue
+				}
+				if i == 0 && j == 0 {
+					e.Edge.FromEl, e.Edge.ToEl = f, t
+					continue
+				}
+				e.Fan(f, t)
+			}
+		}
+	}
 }

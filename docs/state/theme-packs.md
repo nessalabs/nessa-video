@@ -48,9 +48,29 @@ define server units=3     # components built from primitives
   Colours must be `#rrggbb`.
 - **Style** sets defaults per kind: hairline makes shapes and connectors draw
   in, components and text fade in, and titles rise.
-- **Components** are `define` blocks: laptop, phone, server, process, db and
-  queue in hairline. A server is a column of `unit` boxes, a `procs` column
+- **Components** are `define` blocks: laptop, phone, server, process and db
+  in hairline. A server is a column of `unit` boxes, a `procs` column
   with a slot for your processes, and a label.
+- **Collections** are components too, built on three primitives the engine
+  provides: a container with `flow=live` (and `sides=` to draw some of its
+  edges), the `arrow` shape, `table`, and connectors that reach every
+  element their end matches. Hairline defines `node` (a value with an
+  arrow to the next), `cell`, `block` (square cornered), `list` (head,
+  nodes, null), `queue` (front and back), `lifo` (a stack: an open-topped
+  bin that fills from the bottom with `block`s; `stack` is the
+  pile-of-copies shape), `bucket` (an index and its chain)
+  and `balancer` (a load balancer joined to every server in its pool). A
+  pack can define its own the same way.
+
+```reel
+list #l
+  node #a "3"
+  node #n "5"        # shown later: takes no room until then
+  node #b "7"
+show #n              # room opens, 5 fades in
+leave #a             # 3 fades out, the gap closes
+set #b "8"           # the value changes in place
+```
 
 ## Using a pack
 

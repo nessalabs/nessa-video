@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,7 +110,7 @@ func (s *Stage) Layouts(p *motion.Plan) map[*c.Scene]layout.Result {
 	out := map[*c.Scene]layout.Result{}
 	area := s.Area()
 	for i, sp := range p.Scenes {
-		lay := s.Layout(sp.Scene)
+		lay := s.liveLayout(sp)
 		if i > 0 {
 			prev := p.Scenes[i-1]
 			plast := out[prev.Scene]
@@ -131,6 +132,56 @@ func (s *Stage) Layouts(p *motion.Plan) map[*c.Scene]layout.Result {
 		out[sp.Scene] = lay
 	}
 	return out
+}
+
+// liveLayout lays a scene out with every change its steps make to live
+// containers and text, as phases the frame glides through.
+func (s *Stage) liveLayout(sp *motion.ScenePlan) layout.Result {
+	out0, flow, sets := sp.Layouts()
+	if len(flow) == 0 && len(sets) == 0 {
+		return s.Layout(sp.Scene)
+	}
+	type change struct {
+		start, dur float64
+		apply      func(st *layout.State)
+	}
+	var chs []change
+	for _, f := range flow {
+		f := f
+		chs = append(chs, change{f.Start, f.Dur, func(st *layout.State) { st.Out[f.El] = !f.In }})
+	}
+	for _, t := range sets {
+		t := t
+		chs = append(chs, change{t.Start, t.Dur, func(st *layout.State) { st.Text[t.El] = t.Text }})
+	}
+	sort.SliceStable(chs, func(i, j int) bool { return chs[i].start < chs[j].start })
+	cur := layout.State{Out: map[*c.Element]bool{}, Text: map[*c.Element]string{}}
+	for e := range out0 {
+		cur.Out[e] = true
+	}
+	copyState := func(st layout.State) layout.State {
+		n := layout.State{Out: map[*c.Element]bool{}, Text: map[*c.Element]string{}}
+		for k, v := range st.Out {
+			n.Out[k] = v
+		}
+		for k, v := range st.Text {
+			n.Text[k] = v
+		}
+		return n
+	}
+	states := []layout.State{copyState(cur)}
+	at := [][2]float64{{0, 0}}
+	for i, ch := range chs {
+		ch.apply(&cur)
+		if i > 0 && ch.start == chs[i-1].start { // one step changing several things
+			states[len(states)-1] = copyState(cur)
+			at[len(at)-1][1] = math.Max(at[len(at)-1][1], ch.dur)
+			continue
+		}
+		states = append(states, copyState(cur))
+		at = append(at, [2]float64{ch.start, ch.dur})
+	}
+	return layout.SceneStates(sp.Scene.Root, s.Area(), s.Measure, s.Options(), states, at)
 }
 
 // Layout places a scene's elements. Positions do not change while a scene
@@ -159,6 +210,7 @@ func (s *Stage) view(lay layout.Result, target *c.Element) (z, cx, cy float64) {
 
 // Frame returns the display list for one moment of a scene.
 func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.List {
+	lay = lay.At(m.T) // live containers and set text move during the scene
 	dw, dh, scale := s.Design()
 	l := &render.List{W: s.W, H: s.H, BG: s.col("bg")}
 	opt := s.Options()
@@ -444,10 +496,18 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		}
 		p.opacity *= 1 - 0.55*math.Min(1, dimness)
 	}
+	if placed {
+		p.tableParts(e, r, lk, state)
+		if v, ok := e.Computed["sides"]; ok {
+			p.stroke(sidesPath(r, v.Value), lk.line, lk.dash)
+		}
+	}
 	switch {
 	case !placed || e.Edge != nil:
 	case e.Code != nil:
 		p.codePanel(e, r, lk, ap)
+	case kind == "arrow":
+		p.arrow(e, r, lk)
 	case e.Array != nil:
 		p.arrayBlock(e, r, lk, ap)
 	case e.Chart != nil:
@@ -473,7 +533,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 			t := layout.TypeOf(e, p.opt)
 			p.draw = 1
 			p.opacity = opacity * ap.FillIn
-			lines := reveal(p.lay.Lines[e], ap.Reveal)
+			lines, fade := p.linesOf(e)
+			p.opacity *= fade
+			lines = reveal(lines, ap.Reveal)
 			for i, ln := range lines {
 				p.runs(ln, r.X, r.Y+t.Size*(1.0+1.35*float64(i)), t, base, hi, render.Start)
 			}
@@ -483,7 +545,7 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 			// a block whose data could not be read; reel check reports why
 			p.stroke(rr(r, 10), p.s.col("line-0"), true)
 		}
-		if !c.IsBuiltinKind(kind) && kind != "scene" && (state == "focus" || state == "select" || state == "trace") {
+		if !c.IsBuiltinKind(kind) && kind != "scene" && (ap.State == "focus" || ap.State == "select" || ap.State == "trace") {
 			// a component instance with a state draws a frame around itself
 			fr := layout.Rect{X: r.X - 12, Y: r.Y - 10, W: r.W + 24, H: r.H + 20}
 			p.draw = 1
@@ -591,12 +653,15 @@ func (p *painter) shape(e *c.Element, r layout.Rect, lk look, ap motion.Appearan
 			top += layout.CardHead
 		}
 		t := layout.TypeOf(e, p.opt)
-		for i, ln := range p.lay.Lines[e] {
+		lines, fade := p.linesOf(e)
+		p.opacity *= fade
+		for i, ln := range lines {
 			p.runs(ln, r.X+layout.CardPad, top+t.Size*(0.8+layout.CardLine*float64(i)), t, lk.text, p.s.col("hi"), render.Start)
 		}
-	} else if e.Text != "" {
+	} else if text, fade := p.textOf(e); text != "" {
 		t := layout.TypeOf(e, p.opt)
-		p.runs(e.Text, r.CX(), r.CY()+t.Size*0.36, t, lk.text, p.s.col("hi"), render.Middle)
+		p.opacity *= fade
+		p.runs(text, r.CX(), r.CY()+t.Size*0.36, t, lk.text, p.s.col("hi"), render.Middle)
 	}
 }
 
@@ -634,7 +699,7 @@ func (p *painter) route(sc *c.Scene, e *c.Element) [][2]float64 {
 	if e.Edge.From == nil || e.Edge.To == nil {
 		return nil
 	}
-	fromEls, toEls := c.Select(scope, e.Edge.From), c.Select(scope, e.Edge.To)
+	fromEls, toEls := e.Edge.Ends(scope)
 	if len(fromEls) == 0 || len(toEls) == 0 {
 		return nil
 	}
@@ -1045,11 +1110,14 @@ func (p *painter) metric(e *c.Element, r layout.Rect, lk look, ap motion.Appeara
 	if p.tone != "" {
 		num = s.dimLike(s.toneCol(p.tone), num)
 	}
-	lines := p.lay.Lines[e]
+	lines, fade := p.linesOf(e)
+	keep := p.opacity
+	p.opacity *= fade
 	y := r.Y + t.Size
 	for i, ln := range lines {
 		p.runs(ln, r.CX(), y+t.Size*1.35*float64(i), t, num, s.col("hi"), render.Middle)
 	}
+	p.opacity = keep
 	y += t.Size*1.35*float64(max(1, len(lines))-1) + 6
 	if state == "focus" {
 		w := s.Measure.Measure(layout.Plain(e.Text), t.Font, t.Size)
@@ -1158,8 +1226,8 @@ func (p *painter) glideOf(e *c.Element, sc *c.Scene) (render.Affine, bool) {
 		return render.Affine{}, false
 	}
 	start := e.OwnerElement()
-	if start == nil && e.Edge != nil && e.Edge.From != nil {
-		if ends := c.Select(sc.Root, e.Edge.From); len(ends) > 0 {
+	if start == nil && e.Edge != nil {
+		if ends, _ := e.Edge.Ends(sc.Root); len(ends) > 0 {
 			start = ends[0]
 		}
 	}
@@ -1179,4 +1247,150 @@ func (p *painter) held(e *c.Element) float64 {
 		op *= p.mo.Look(x).Opacity
 	}
 	return op
+}
+
+// changing reports how far a `set` on e has got: while its text is being
+// replaced, the old text fades out over the first half and the new one in
+// over the second. It returns whether to draw the old text, and its fade.
+func (p *painter) changing(e *c.Element) (old bool, fade float64) {
+	l := p.lay
+	if l.TextMix <= 0 || l.TextMix >= 1 {
+		return false, 1
+	}
+	was, had := l.TextWas[e]
+	now, has := l.Text[e]
+	if had == has && was == now {
+		return false, 1
+	}
+	if l.TextMix < .5 {
+		return true, 1 - 2*l.TextMix
+	}
+	return false, 2*l.TextMix - 1
+}
+
+// textOf is e's text as `set` steps have left it, and its fade.
+func (p *painter) textOf(e *c.Element) (string, float64) {
+	old, fade := p.changing(e)
+	m := p.lay.Text
+	if old {
+		m = p.lay.TextWas
+	}
+	if t, ok := m[e]; ok {
+		return t, fade
+	}
+	return e.Text, fade
+}
+
+// linesOf is e's wrapped text as `set` steps have left it, and its fade.
+func (p *painter) linesOf(e *c.Element) ([]string, float64) {
+	old, fade := p.changing(e)
+	if old && p.lay.LinesWas != nil {
+		return p.lay.LinesWas[e], fade
+	}
+	return p.lay.Lines[e], fade
+}
+
+// arrow draws a straight arrow across its box, pointing dir= (right by
+// default), with optional text beside it. It draws in like a connector.
+func (p *painter) arrow(e *c.Element, r layout.Rect, lk look) {
+	var from, to [2]float64
+	switch str(e, "dir") {
+	case "left":
+		from, to = [2]float64{r.Right(), r.CY()}, [2]float64{r.X, r.CY()}
+	case "down":
+		from, to = [2]float64{r.CX(), r.Y}, [2]float64{r.CX(), r.Bottom()}
+	case "up":
+		from, to = [2]float64{r.CX(), r.Bottom()}, [2]float64{r.CX(), r.Y}
+	default:
+		from, to = [2]float64{r.X, r.CY()}, [2]float64{r.Right(), r.CY()}
+	}
+	p.stroke(fmt.Sprintf("M%g %gL%g %g", from[0], from[1], to[0], to[1]), lk.line, lk.dash)
+	if p.draw >= 1 {
+		p.chevron(from, to, lk.line)
+	}
+	if text, fade := p.textOf(e); text != "" {
+		t := p.opt.Type["label"]
+		keep := p.opacity
+		p.opacity *= fade
+		d := p.draw
+		p.draw = 1
+		p.runs(text, r.CX(), r.Y-6, t, lk.text, p.s.col("hi"), render.Middle)
+		p.draw = d
+		p.opacity = keep
+	}
+}
+
+// tableParts draws a table's outline, and for a row of a table, the rule
+// above it and, when the row is focused or selected, its fill. Each part
+// fades with its own element, so a row that joins or leaves brings its
+// rule with it.
+func (p *painter) tableParts(e *c.Element, r layout.Rect, lk look, state string) {
+	if e.Kind() == "table" {
+		p.stroke(rr(r, p.s.num("radius", 8)), lk.line, false)
+		return
+	}
+	t := e.ParentElement()
+	if t == nil || t.Kind() != "table" {
+		return
+	}
+	tr, ok := p.lay.Boxes[t]
+	if !ok {
+		return
+	}
+	row := layout.Rect{X: tr.X, Y: r.Y, W: tr.W, H: r.H}
+	if len(e.Children) == 0 {
+		// a row that is one element: its box is the cell, not the row
+		row.Y, row.H = r.Y-12, r.H+24
+	}
+	if (state == "focus" || state == "select") && lk.fill.A > 0 {
+		p.fill(rr(row, 0), lk.fill)
+	}
+	if row.Y > tr.Y+1 {
+		p.stroke(fmt.Sprintf("M%g %gH%g", row.X, row.Y, row.Right()), p.s.col("line-0"), false)
+	}
+}
+
+// sidesPath draws the named edges of r ("left,right,bottom", or "all") as
+// few strokes as it can, clockwise from after a missing edge, so an
+// open-topped bin draws in as one line.
+func sidesPath(r layout.Rect, sides string) string {
+	var on [4]bool // top, right, bottom, left
+	for _, s := range strings.Split(sides, ",") {
+		switch strings.TrimSpace(s) {
+		case "top":
+			on[0] = true
+		case "right":
+			on[1] = true
+		case "bottom":
+			on[2] = true
+		case "left":
+			on[3] = true
+		case "all":
+			on = [4]bool{true, true, true, true}
+		}
+	}
+	corner := [4][2]float64{{r.X, r.Y}, {r.Right(), r.Y}, {r.Right(), r.Bottom()}, {r.X, r.Bottom()}}
+	start := 0
+	for i, o := range on {
+		if !o {
+			start = i + 1
+			break
+		}
+	}
+	var b strings.Builder
+	run := false
+	for k := 0; k < 4; k++ {
+		i := (start + k) % 4
+		if !on[i] {
+			run = false
+			continue
+		}
+		if !run {
+			fmt.Fprintf(&b, "M%g %g", corner[i][0], corner[i][1])
+			run = true
+		}
+		j := (i + 1) % 4
+		fmt.Fprintf(&b, "L%g %g", corner[j][0], corner[j][1])
+	}
+	return b.String()
 }

@@ -66,6 +66,8 @@ tokens
 style
   *          enter=fade exit=fade state=rest
   edge       enter=draw exit=fade
+  arrow      enter=draw exit=fade
+  table      flow=live
   box        enter=fade
   card       enter=fade
   circle     enter=fade
@@ -112,8 +114,68 @@ define db
   store #store
   label #label "{text}"
 
-define queue items=3 label=""
-  col gap=8
-    repeat items
-      box #slot w=120 h=32
+# Collections. They are built on two primitives: a container with
+# flow=live, where a child a later step shows takes no room until then and
+# one that leaves gives its room back, the rest gliding; and `arrow`.
+# Put items inside; `show #x` adds one where it is written, `leave #x`
+# takes one out, and `set #x "9"` changes one in place.
+
+# a value with an arrow to the next, for linked lists and hash chains
+define node
+  row gap=0 align=center
+    box #value w=64 h=48 "{text}"
+    arrow #next len=32
+
+# a plain value cell, for queues, stacks and arrays that grow
+define cell
+  box #value w=64 h=48 "{text}"
+
+# a linked list: head, its nodes, and the null the last one points to
+define list head="head"
+  row gap=12 align=center
+    label #head "{head}"
+    row #items flow=live gap=0 align=center
+      slot
+    label #null "null"
+
+# a queue: items join at the back (written last) and leave from the front
+define queue items=0 label=""
+  col gap=10 align=center
+    row gap=16 align=center
+      label #front "front"
+      row #items flow=live gap=8 align=center
+        repeat items
+          box #slot{i} w=64 h=48
+        slot
+      label #back "back"
     label #label "{label}"
+
+# a stack, last in first out (`stack` is the pile-of-copies shape): an
+# open-topped bin that fills from the bottom. Put `block`s inside, the top
+# one first; a pushed block is written above the rest.
+define lifo label="" depth=232
+  col gap=12 align=center
+    col #items flow=live gap=4 align=center justify=end sides=left,right,bottom pad=6 h={depth}
+      slot
+    label #label "{label}"
+
+# a square-cornered block, for stacks and other bins that fill up
+define block
+  box #value w=140 h=44 r=0 "{text}"
+
+# one bucket of a hash map: its index and the chain of entries in it
+define bucket
+  row gap=12 align=center
+    box #index w=40 h=40 "{text}"
+    arrow #to len=24
+    row #chain flow=live gap=0 align=center
+      slot
+
+# a load balancer in front of a pool of servers; put the servers inside.
+# The connector reaches every server, so one added later is joined too.
+define balancer label="load balancer"
+  row gap=120 align=center
+    box #lb w=160 h=56 "{label}"
+    col #pool flow=live gap=16 align=start
+      slot
+  #lb -> #pool>*

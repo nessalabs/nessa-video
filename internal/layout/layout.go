@@ -97,11 +97,20 @@ type Result struct {
 	// scene, where it was on screen when that scene ended, in design units
 	// after the camera. The stage glides it from there to its new place.
 	Came map[*c.Element]Rect
+	// Text holds text that `set` steps changed by this layout; TextWas and
+	// TextMix let the stage cross-fade from the text before.
+	Text     map[*c.Element]string
+	TextWas  map[*c.Element]string
+	TextMix  float64
+	LinesWas map[*c.Element][]string
+	// Live holds the later layouts of a scene whose live containers change.
+	Live []Phase
 }
 
 type engine struct {
 	m    Measurer
 	opt  Options
+	st   State // children kept out of the flow and text set by steps
 	size map[*c.Element][2]float64
 	res  Result
 	flip map[*c.Element]bool    // rows and columns turned the other way to fit
@@ -119,10 +128,20 @@ type engine struct {
 func Scene(root *c.Element, area Rect, m Measurer, opt Options) Result {
 	e := &engine{m: m, opt: opt, flip: map[*c.Element]bool{}, room: map[*c.Element]float64{}}
 	e.labelRoom(root)
-	var w, h float64
+	w, h := e.fitFlips(root, area)
+	return e.finish(root, area, w, h, 0)
+}
+
+// fresh clears what one measuring pass computed.
+func (e *engine) fresh() {
+	e.size = map[*c.Element][2]float64{}
+	e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}, Text: e.st.Text}
+}
+
+// fitFlips measures root, turning rows and columns until it fits.
+func (e *engine) fitFlips(root *c.Element, area Rect) (w, h float64) {
 	for round := 0; ; round++ {
-		e.size = map[*c.Element][2]float64{}
-		e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}}
+		e.fresh()
 		w, h = e.measure(root)
 		if round >= 16 || (w <= area.W && h <= area.H) {
 			break
@@ -142,25 +161,154 @@ func Scene(root *c.Element, area Rect, m Measurer, opt Options) Result {
 	if len(e.flip) > 0 && fitOf(w, h) < 1 {
 		flips, fitFlipped := e.flip, fitOf(w, h)
 		e.flip = map[*c.Element]bool{}
-		e.size = map[*c.Element][2]float64{}
-		e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}}
+		e.fresh()
 		w2, h2 := e.measure(root)
 		if fitOf(w2, h2) > fitFlipped+0.02 {
-			w, h = w2, h2
-		} else {
-			e.flip = flips
-			e.size = map[*c.Element][2]float64{}
-			e.res = Result{Boxes: map[*c.Element]Rect{}, Lines: map[*c.Element][]string{}, Fit: 1, SeqX: map[*c.Element][]float64{}}
-			w, h = e.measure(root)
+			return w2, h2
 		}
+		e.flip = flips
+		e.fresh()
+		w, h = e.measure(root)
 	}
+	return w, h
+}
+
+// finish places root centred in area. fit, when not 0, is the scale to
+// use instead of the one this layout alone would need.
+func (e *engine) finish(root *c.Element, area Rect, w, h, fit float64) Result {
 	r := Rect{area.X + (area.W-w)/2, area.Y + (area.H-h)/2, w, h}
 	e.place(root, r)
 	e.res.Content = r
 	if w > area.W || h > area.H {
 		e.res.Fit = min(area.W/w, area.H/h)
 	}
+	if fit > 0 {
+		e.res.Fit = fit
+	}
 	return e.res
+}
+
+// State is what steps have changed in a scene's layout at some moment:
+// children of live containers that are out of the flow (not shown yet, or
+// gone), and text set by `set`.
+type State struct {
+	Out  map[*c.Element]bool
+	Text map[*c.Element]string
+}
+
+// Phase is a later layout of a scene that elements glide to, from Start
+// over Dur seconds of scene time.
+type Phase struct {
+	Start, Dur float64
+	Result
+}
+
+// SceneStates lays a scene out once per state. The first state is the
+// result; later ones become its phases, starting at the given times. All
+// share the turns and scale of the layout with everything in the flow, so
+// a growing list moves its neighbours instead of reshaping the frame.
+func SceneStates(root *c.Element, area Rect, m Measurer, opt Options, states []State, at [][2]float64) Result {
+	e := &engine{m: m, opt: opt, flip: map[*c.Element]bool{}, room: map[*c.Element]float64{}}
+	e.labelRoom(root)
+	w, h := e.fitFlips(root, area)
+	full := e.finish(root, area, w, h, 0)
+	var out Result
+	for i, st := range states {
+		e.st = st
+		e.fresh()
+		w, h := e.measure(root)
+		r := e.finish(root, area, w, h, full.Fit)
+		anchor(root, full, r)
+		if i == 0 {
+			out = r
+			continue
+		}
+		out.Live = append(out.Live, Phase{Start: at[i][0], Dur: at[i][1], Result: r})
+	}
+	return out
+}
+
+// anchor moves a state's layout so its content starts where the full
+// layout's does, top left. Centred afresh, content that grows would push
+// everything before it the other way; anchored, an item added to a list
+// moves only the items after it, and the whole always fits where the
+// full layout does.
+func anchor(root *c.Element, full, r Result) {
+	span := func(res Result) (Rect, bool) {
+		var u Rect
+		ok := false
+		for _, ch := range root.Children {
+			if b, has := res.Boxes[ch]; has && (b.W > 0 || b.H > 0) {
+				if !ok {
+					u, ok = b, true
+				} else {
+					u = u.Union(b)
+				}
+			}
+		}
+		return u, ok
+	}
+	f, ok1 := span(full)
+	g, ok2 := span(r)
+	if !ok1 || !ok2 {
+		return
+	}
+	dx, dy := f.X-g.X, f.Y-g.Y
+	if dx == 0 && dy == 0 {
+		return
+	}
+	for el, b := range r.Boxes {
+		if el != root {
+			r.Boxes[el] = Rect{b.X + dx, b.Y + dy, b.W, b.H}
+		}
+	}
+}
+
+// At returns the layout as it is t seconds into the scene: each phase that
+// has started replaces the boxes before it, gliding there over its length.
+func (r Result) At(t float64) Result {
+	if len(r.Live) == 0 {
+		return r
+	}
+	cur := r
+	cur.Live = nil
+	for _, ph := range r.Live {
+		if t < ph.Start {
+			break
+		}
+		f := 1.0
+		if ph.Dur > 0 {
+			f = (t - ph.Start) / ph.Dur
+		}
+		if f >= 1 {
+			next := ph.Result
+			next.Came = r.Came
+			cur = next
+			continue
+		}
+		f = f * f * (3 - 2*f)
+		mix := make(map[*c.Element]Rect, len(ph.Boxes))
+		for el, b := range ph.Boxes {
+			if a, ok := cur.Boxes[el]; ok {
+				b = Rect{a.X + (b.X-a.X)*f, a.Y + (b.Y-a.Y)*f, a.W + (b.W-a.W)*f, a.H + (b.H-a.H)*f}
+			}
+			mix[el] = b
+		}
+		for el, a := range cur.Boxes { // leaving the flow: stay put while it goes
+			if _, ok := mix[el]; !ok {
+				mix[el] = a
+			}
+		}
+		next := ph.Result
+		next.Boxes = mix
+		next.Came = r.Came
+		next.TextMix = f
+		next.TextWas = cur.Text
+		next.LinesWas = cur.Lines
+		cur = next
+		break
+	}
+	return cur
 }
 
 // labelRoom finds connectors with labels whose ends sit in neighbouring
@@ -175,7 +323,7 @@ func (e *engine) labelRoom(root *c.Element) {
 		if o := edge.OwnerElement(); o != nil {
 			scope = o
 		}
-		from, to := c.Select(scope, edge.Edge.From), c.Select(scope, edge.Edge.To)
+		from, to := edge.Edge.Ends(scope)
 		if len(from) == 0 || len(to) == 0 {
 			return
 		}
@@ -264,7 +412,7 @@ func (e *engine) flipTallest(root *c.Element, area Rect) bool {
 		}
 		var across float64
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				across += e.size[ch][0] + e.opt.Gap
 			}
 		}
@@ -351,8 +499,16 @@ func Plain(s string) string {
 
 var textKinds = map[string]bool{"title": true, "p": true, "label": true, "metric": true, "code": true}
 
-func inFlow(el *c.Element) bool {
-	return el.Kind() != "edge" && el.Kind() != "use" && str(el, "hidden", "false") != "true"
+func (e *engine) inFlow(el *c.Element) bool {
+	return el.Kind() != "edge" && el.Kind() != "use" && str(el, "hidden", "false") != "true" && !e.st.Out[el]
+}
+
+// textOf is an element's text, as a `set` step may have changed it.
+func (e *engine) textOf(el *c.Element) string {
+	if t, ok := e.st.Text[el]; ok {
+		return t
+	}
+	return el.Text
 }
 
 func (e *engine) measure(el *c.Element) (float64, float64) {
@@ -375,7 +531,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		var main, cross float64
 		var prev *c.Element
 		for _, ch := range el.Children {
-			if !inFlow(ch) {
+			if !e.inFlow(ch) {
 				continue
 			}
 			w, h := e.measure(ch)
@@ -398,13 +554,15 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 			return main + 2*pad, cross + 2*pad
 		}
 		return cross + 2*pad, main + 2*pad
+	case kind == "table":
+		return e.table(el, nil)
 	case kind == "grid":
 		cols := int(num(el, "cols", 2))
 		gap := num(el, "gap", e.opt.Gap)
 		var cw, rh float64
 		n := 0
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				w, h := e.measure(ch)
 				cw, rh = max(cw, w), max(rh, h)
 				n++
@@ -417,7 +575,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 	case kind == "layer":
 		var w, h float64
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				cw, chh := e.measure(ch)
 				w, h = max(w, cw), max(h, chh)
 			}
@@ -426,7 +584,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 	case kind == "place":
 		var r Rect
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				w, h := e.measure(ch)
 				r = r.Union(Rect{num(ch, "x", 0), num(ch, "y", 0), w, h})
 			}
@@ -434,6 +592,12 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		return r.Right(), r.Bottom()
 	case el.Code != nil:
 		return e.codePanel(el)
+	case kind == "arrow":
+		long := num(el, "len", 40)
+		if d := str(el, "dir", "right"); d == "down" || d == "up" {
+			return 16, long
+		}
+		return long, 16
 	case el.Array != nil:
 		n := float64(len(el.Array.Values))
 		return n*CellSize + (n-1)*CellGap, PointerTop + CellSize + IndexBand
@@ -470,9 +634,9 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 	case textKinds[kind]:
 		return e.text(el)
 	case kind == "box" || kind == "decision":
-		if el.Text != "" {
+		if e.textOf(el) != "" {
 			t := TypeOf(el, e.opt)
-			tw := e.m.Measure(Plain(el.Text), t.Font, t.Size)
+			tw := e.m.Measure(Plain(e.textOf(el)), t.Font, t.Size)
 			if kind == "decision" {
 				return max(120, tw+72), 80
 			}
@@ -511,16 +675,16 @@ func (e *engine) text(el *c.Element) (float64, float64) {
 	case el.Kind() == "code" && len(el.Body) > 0:
 		lines = el.Body
 	case el.Kind() == "p":
-		lines = e.wrap(el.Text, t, num(el, "w", e.opt.MaxTextW))
+		lines = e.wrap(e.textOf(el), t, num(el, "w", e.opt.MaxTextW))
 	default:
-		lines = strings.Split(el.Text, "\n")
+		lines = strings.Split(e.textOf(el), "\n")
 	}
 	e.res.Lines[el] = lines
 	var w float64
 	for _, l := range lines {
 		w = max(w, e.m.Measure(Plain(l), t.Font, t.Size))
 	}
-	if el.Text == "" && len(el.Body) == 0 {
+	if e.textOf(el) == "" && len(el.Body) == 0 {
 		return 0, 0
 	}
 	return w, line * float64(len(lines))
@@ -544,7 +708,7 @@ func (e *engine) card(el *c.Element) (float64, float64) {
 		head = CardHead
 		w = max(w, e.m.Measure(Plain(title), "sans500", 13)+2*12)
 	}
-	if el.Text == "" {
+	if e.textOf(el) == "" {
 		e.res.Lines[el] = nil
 		return w, head + 64
 	}
@@ -552,7 +716,7 @@ func (e *engine) card(el *c.Element) (float64, float64) {
 	if v := num(el, "w", 0); v > 0 {
 		maxText = v - 2*CardPad
 	}
-	lines := e.wrap(el.Text, t, maxText)
+	lines := e.wrap(e.textOf(el), t, maxText)
 	e.res.Lines[el] = lines
 	widest := 0.0
 	for _, l := range lines {
@@ -596,7 +760,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 		var kids []*c.Element
 		var used float64
 		for _, ch := range el.Children {
-			if !inFlow(ch) {
+			if !e.inFlow(ch) {
 				continue
 			}
 			s := e.size[ch]
@@ -662,19 +826,21 @@ func (e *engine) place(el *c.Element, r Rect) {
 				pos += s[1] + gap + extra
 			}
 		}
+	case kind == "table":
+		e.table(el, &inner)
 	case kind == "grid":
 		cols := max(int(num(el, "cols", 2)), 1)
 		gap := num(el, "gap", e.opt.Gap)
 		cw := (inner.W - gap*float64(cols-1)) / float64(cols)
 		var rh float64
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				rh = max(rh, e.size[ch][1])
 			}
 		}
 		i := 0
 		for _, ch := range el.Children {
-			if !inFlow(ch) {
+			if !e.inFlow(ch) {
 				continue
 			}
 			s := e.size[ch]
@@ -685,14 +851,14 @@ func (e *engine) place(el *c.Element, r Rect) {
 		}
 	case kind == "layer":
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				s := e.size[ch]
 				e.place(ch, Rect{inner.CX() - s[0]/2, inner.CY() - s[1]/2, s[0], s[1]})
 			}
 		}
 	case kind == "place":
 		for _, ch := range el.Children {
-			if inFlow(ch) {
+			if e.inFlow(ch) {
 				s := e.size[ch]
 				e.place(ch, Rect{inner.X + num(ch, "x", 0), inner.Y + num(ch, "y", 0), s[0], s[1]})
 			}
@@ -717,7 +883,7 @@ func (e *engine) graph(el *c.Element, at *Rect) (float64, float64) {
 	var ranks []*rk
 	sizes := map[*c.Element][2]float64{}
 	for _, ch := range el.Children {
-		if !inFlow(ch) {
+		if !e.inFlow(ch) {
 			continue
 		}
 		w, h := e.measure(ch)
@@ -746,7 +912,7 @@ func (e *engine) graph(el *c.Element, at *Rect) (float64, float64) {
 		if ch.Edge == nil || ch.Edge.From == nil || ch.Edge.To == nil {
 			continue
 		}
-		from, to := c.Select(el, ch.Edge.From), c.Select(el, ch.Edge.To)
+		from, to := ch.Edge.Ends(el)
 		if len(from) > 0 && len(to) > 0 {
 			parents[to[0]] = append(parents[to[0]], from[0])
 		}
@@ -950,4 +1116,98 @@ func (e *engine) sequenceColumns(el *c.Element) float64 {
 	}
 	e.res.SeqX[el] = xs
 	return xs[n-1] + right
+}
+
+// Table cell padding.
+const tablePadX, tablePadY = 20.0, 12.0
+
+// cells lists a table row's cells: its children on screen, looking
+// through a row that only wraps another (a component's body), whose boxes
+// are added to wraps.
+func (e *engine) cells(row *c.Element) (cells, wraps []*c.Element) {
+	for {
+		cells = cells[:0]
+		for _, ch := range row.Children {
+			if e.inFlow(ch) {
+				cells = append(cells, ch)
+			}
+		}
+		if len(cells) != 1 || len(cells[0].Children) == 0 || cells[0].Code != nil {
+			break
+		}
+		k := cells[0].Kind()
+		if k != "row" && k != "col" && c.IsBuiltinKind(k) {
+			break
+		}
+		wraps = append(wraps, cells[0])
+		row = cells[0]
+	}
+	if len(row.Children) == 0 {
+		// a row that is a single element is one cell
+		return []*c.Element{row}, wraps
+	}
+	return append([]*c.Element(nil), cells...), wraps
+}
+
+// table sizes (at == nil) or places a table: each child is a row, each
+// row's children are its cells, and cells in the same column share its
+// width. Rows stack with no gap; the stage draws a rule between them.
+func (e *engine) table(el *c.Element, at *Rect) (float64, float64) {
+	var rows []*c.Element
+	for _, ch := range el.Children {
+		if e.inFlow(ch) {
+			rows = append(rows, ch)
+		}
+	}
+	var colW []float64
+	rowH := make([]float64, len(rows))
+	for i, r := range rows {
+		cs, _ := e.cells(r)
+		for j, cell := range cs {
+			w, h := e.size[cell][0], e.size[cell][1]
+			if at == nil {
+				w, h = e.measure(cell)
+			}
+			for len(colW) <= j {
+				colW = append(colW, 0)
+			}
+			colW[j] = max(colW[j], w)
+			rowH[i] = max(rowH[i], h)
+		}
+		rowH[i] += 2 * tablePadY
+	}
+	var W, H float64
+	for _, w := range colW {
+		W += w + 2*tablePadX
+	}
+	for _, h := range rowH {
+		H += h
+	}
+	if at == nil {
+		for i, r := range rows {
+			if r.Children != nil {
+				e.size[r] = [2]float64{W, rowH[i]}
+			}
+		}
+		return W, H
+	}
+	y := at.Y
+	for i, r := range rows {
+		box := Rect{at.X, y, at.W, rowH[i]}
+		cs, wraps := e.cells(r)
+		for _, w := range wraps {
+			e.res.Boxes[w] = box
+		}
+		x := at.X
+		for j, cell := range cs {
+			if cell != r {
+				e.res.Boxes[r] = box
+			}
+			s := e.size[cell]
+			e.place(cell, Rect{x + tablePadX, y + (rowH[i]-s[1])/2, s[0], s[1]})
+			x += colW[j] + 2*tablePadX
+		}
+		y += rowH[i]
+	}
+	return W, H
 }

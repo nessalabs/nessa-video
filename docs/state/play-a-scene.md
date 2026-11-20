@@ -9,6 +9,8 @@ sources:
   - internal/motion/plan.go
   - internal/motion/moment.go
   - internal/motion/plan_test.go
+  - internal/layout/layout.go
+  - internal/stage/live_test.go
 diagramLinks: {}
 diagramDetails:
   - diagram: 0
@@ -72,7 +74,11 @@ half a second after the previous step started. `for=` sets its length.
 
 A state step such as `focus` blends lines, fills and text from the old state
 to the new one. Dim and focus pass down to a component's parts. `send` moves
-a dot along the connector that starts at its target. `type` reveals a
+a dot along the connector that starts at its target or one of its parts;
+`send #lb to=#s2` takes the connector that ends at `#s2`. `set #x "9"`
+changes an element's text, fading the old text out and the new in; on a
+component it changes the parts that showed the same text, and the layout
+takes the new size. `type` reveals a
 terminal or text block character by character; inline marks such as
 `==this==` are skipped so emphasis is never cut in half. `camera zoom`
 moves the view to frame its target and `camera reset` moves back.
@@ -81,6 +87,20 @@ For data blocks, `ptr` slides an array pointer, `swap` exchanges two cells,
 `mark #a cells=…` brightens cells, `walk` lights a diagram's nodes in order
 and `play` sweeps a timeline's playhead; see
 [Show arrays, charts, timelines, diagrams and maths](show-data.md).
+
+## Growing and shrinking
+
+A `row`, `col` or `grid` with `flow=live`, and every `table`, gives room only to children on
+screen. A child that a later `show` brings in takes no room until then;
+when it is shown, its neighbours glide apart over half a second while it
+fades in. A child that leaves fades out first, then its neighbours glide
+together. Without `flow=live` a container keeps room for every child, so
+nothing else moves. While a scene grows and shrinks its content keeps its
+top left corner where the scene's fullest layout puts it, rather than
+centring afresh, so an item added to a list moves only the items after it.
+Connectors follow the elements they join. One step that
+changes several things, such as a `set` on a component, moves everything
+together.
 
 ## Leaving
 

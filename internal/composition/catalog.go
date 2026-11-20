@@ -9,11 +9,11 @@ import "sort"
 // Primitives are drawn directly.
 var Primitives = []string{
 	"box", "card", "circle", "decision", "store", "stack",
-	"title", "p", "code", "label", "metric",
+	"title", "p", "code", "label", "metric", "arrow",
 }
 
 // Layouts arrange their children.
-var Layouts = []string{"row", "col", "grid", "layer", "place"}
+var Layouts = []string{"row", "col", "grid", "table", "layer", "place"}
 
 // Blocks are content with their own input format.
 var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid", "math"}
@@ -22,7 +22,7 @@ var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid
 var Verbs = []string{
 	"focus", "dim", "active", "select", "trace", "rest", // states
 	"leave", "clear", // exits
-	"camera", "send", "type", "play", "walk", "swap", "mark", "ptr", "show",
+	"camera", "send", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
 	"say", "wait", "hold",
 }
 
@@ -42,7 +42,7 @@ var Props = []string{
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
-	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "context", "speak", "model", "on", "to", "reveal",
+	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "context", "speak", "model", "on", "to", "reveal",
 }
 
 // IsVerb reports whether k names a step.
@@ -85,6 +85,7 @@ var KindProps = map[string]string{
 	"title":    `"text with ==emphasis=="`,
 	"p":        `"text" (wraps)`,
 	"label":    `"text" color= font= size=`,
+	"arrow":    `"text above it" dir=right|left|down|up len=40`,
 	"metric":   `"1024" label="what it counts" note="where it comes from" size= tone=bad|good|warn|info`,
 	"code":     `LANG, indented lines or file= lines=; focus= context= (lines kept around focus)`,
 	"diff":     `indented git diff or file= path= hunk=; focus=+12..+14 context=`,
@@ -94,9 +95,10 @@ var KindProps = map[string]string{
 	"timeline": `unit=, indented lanes: label | 0-18 text | *18-22 strong`,
 	"mermaid":  `reveal=steps (start empty; walk and show add parts), indented flowchart LR|TD or sequenceDiagram (participant, ->>, -->>, -x, Note, alt/else/opt/loop/par/end, autonumber)`,
 	"math":     `"TeX" size=`,
-	"row":      `gap= align= justify= pad= dir= fit=`,
-	"col":      `gap= align= justify= pad= dir= fit=`,
-	"grid":     `cols= gap=`,
+	"row":      `gap= align= justify= pad= dir= fit= flow=live (children not shown yet or gone take no room; the rest glide) sides=left,right,bottom (draw those edges)`,
+	"col":      `gap= align= justify= pad= dir= fit= flow=live sides=`,
+	"grid":     `cols= gap= flow=live`,
+	"table":    `flow=live (default); each child is a row, its children the cells; columns line up and rules part the rows`,
 	"layer":    `(children stacked)`,
 	"place":    `children take x= y=`,
 }

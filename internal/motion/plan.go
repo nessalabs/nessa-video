@@ -6,6 +6,7 @@ package motion
 
 import (
 	"github.com/nessalabs/nessa-video/internal/markup"
+	"github.com/nessalabs/nessa-video/internal/selector"
 	"math"
 	"strconv"
 	"strings"
@@ -97,6 +98,30 @@ type Send struct {
 	Start, Dur float64
 }
 
+// FlowChange is a child of a live container (`flow=live`) joining its
+// flow (In) or leaving it, its siblings gliding over Dur from Start.
+type FlowChange struct {
+	El         *c.Element
+	In         bool
+	Start, Dur float64
+}
+
+// TextSet is a `set` step: El's text becomes Text from Start over Dur.
+type TextSet struct {
+	El         *c.Element
+	Text       string
+	Start, Dur float64
+}
+
+// FlowTime is how long siblings take to make room or close a gap.
+const FlowTime = 0.5
+
+// live reports whether e sits directly in a live container.
+func live(e *c.Element) bool {
+	p := e.ParentElement()
+	return p != nil && prop(p, "flow", "") == "live"
+}
+
 // ScenePlan is the timeline of one scene.
 type ScenePlan struct {
 	Scene      *c.Scene
@@ -116,6 +141,8 @@ type ScenePlan struct {
 	ptrs     map[*c.Element][]PointerMove
 	swaps    map[*c.Element][]SwapMove
 	plays    map[*c.Element][]PlaySeg
+	flow     []FlowChange // children joining or leaving live containers
+	sets     []TextSet
 	endState map[*c.Element]string // by identity
 	endCam   *c.Element            // identity
 	closeAt  float64               // when exits for the next scene's clear begin; 0 if none
@@ -415,11 +442,16 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			dur = .45
 		case "swap":
 			dur = .6
+		case "set":
+			dur = FlowTime
 		case "play":
 			dur = 2
 		case "show":
 			for _, e := range targets {
 				dur = math.Max(dur, modeDur(prop(e, "enter", "fade"), tm))
+				if live(e) {
+					dur = math.Max(dur, FlowTime)
+				}
 			}
 		case "walk":
 			dur = float64(len(st.Args)) * walkStep(targets, building)
@@ -468,6 +500,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					mode = v
 				}
 				sp.exit[e] = Anim{Mode: mode, Start: start, Dur: dur}
+				if live(e) { // the gap closes once it has gone
+					sp.flow = append(sp.flow, FlowChange{El: e, Start: start + dur, Dur: FlowTime})
+				}
+			}
+			if len(targets) > 0 && live(targets[0]) {
+				dur += FlowTime
 			}
 		case "camera":
 			var to *c.Element
@@ -479,8 +517,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			sp.camera = append(sp.camera, CameraMove{From: cam, To: to, Start: start, Dur: dur})
 			cam = to
 		case "send":
+			var to *selector.Selector
+			if v, ok := st.Lookup("to"); ok {
+				to, _ = selector.ParseSelector(v)
+			}
 			for _, e := range targets {
-				if edge := edgeFrom(sc, e); edge != nil {
+				if edge := edgeFrom(sc, e, to); edge != nil {
 					sp.sends = append(sp.sends, Send{Edge: edge, Start: start, Dur: dur})
 				}
 			}
@@ -535,9 +577,26 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				if e.Carried && !waiting[e] {
 					continue // already on screen from the last scene
 				}
+				if live(e) { // room opens while it fades in
+					sp.flow = append(sp.flow, FlowChange{El: e, In: true, Start: start, Dur: FlowTime})
+					place(e, start+FlowTime*0.4)
+					continue
+				}
 				place(e, start)
 			}
 			showing = false
+		case "set":
+			for _, e := range targets {
+				sp.sets = append(sp.sets, TextSet{El: e, Text: st.Text, Start: start, Dur: dur})
+				if !c.IsBuiltinKind(e.Kind()) && e.Text != "" {
+					// a component shows its text through parts: set those too
+					e.Walk(func(d *c.Element) {
+						if d != e && d.Text == e.Text {
+							sp.sets = append(sp.sets, TextSet{El: d, Text: st.Text, Start: start, Dur: dur})
+						}
+					})
+				}
+			}
 		case "walk":
 			step := walkStep(targets, building)
 			for _, e := range targets {
@@ -685,31 +744,54 @@ func endsOf(sc *c.Scene, edge *c.Element) []*c.Element {
 		scope = o
 	}
 	var out []*c.Element
-	if edge.Edge.From != nil {
-		if els := c.Select(scope, edge.Edge.From); len(els) > 0 {
-			out = append(out, els[0])
-		}
+	from, to := edge.Edge.Ends(scope)
+	if len(from) > 0 {
+		out = append(out, from[0])
 	}
-	if edge.Edge.To != nil {
-		if els := c.Select(scope, edge.Edge.To); len(els) > 0 {
-			out = append(out, els[0])
-		}
+	if len(to) > 0 {
+		out = append(out, to[0])
 	}
 	return out
 }
 
 // edgeFrom finds the first connector that starts at e.
-func edgeFrom(sc *c.Scene, e *c.Element) *c.Element {
+func edgeFrom(sc *c.Scene, e *c.Element, to *selector.Selector) *c.Element {
 	var found *c.Element
 	sc.Root.Walk(func(x *c.Element) {
 		if found != nil || x.Edge == nil {
 			return
 		}
-		if ends := endsOf(sc, x); len(ends) > 0 && ends[0] == e {
-			found = x
+		ends := endsOf(sc, x)
+		if len(ends) == 0 || !within(ends[0], e) {
+			return
 		}
+		if to != nil && (len(ends) < 2 || !matchesIn(to, ends[1])) {
+			return
+		}
+		found = x
 	})
 	return found
+}
+
+// within reports whether x is e or one of its parts.
+func within(x, e *c.Element) bool {
+	for ; x != nil; x = x.ParentElement() {
+		if x == e {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesIn reports whether sel matches x or an element x sits in, so
+// `to=#s2` finds a connector that ends on a part of #s2.
+func matchesIn(sel *selector.Selector, x *c.Element) bool {
+	for ; x != nil; x = x.ParentElement() {
+		if sel.Matches(x) {
+			return true
+		}
+	}
+	return false
 }
 
 // Ease is the standard ease-in-out curve used for all motion.
@@ -762,7 +844,8 @@ func linkBetween(owner, a, b *c.Element) *c.Element {
 		if found != nil || x.Edge == nil || x.Edge.From == nil || x.Edge.To == nil {
 			continue
 		}
-		if x.Edge.From.Matches(a) && x.Edge.To.Matches(b) {
+		from, to := x.Edge.Ends(owner)
+		if len(from) > 0 && len(to) > 0 && from[0] == a && to[0] == b {
 			found = x
 		}
 	}
@@ -891,4 +974,20 @@ func walkStep(targets []*c.Element, building map[*c.Element]bool) float64 {
 		}
 	}
 	return .45
+}
+
+// Layouts lists the moments a scene's layout changes, in time order: a
+// child joining or leaving a live container, or text set by `set`. Out is
+// the set of live children out of the flow when the scene starts (those a
+// later step shows).
+func (sp *ScenePlan) Layouts() (out map[*c.Element]bool, flow []FlowChange, sets []TextSet) {
+	out = map[*c.Element]bool{}
+	seen := map[*c.Element]bool{}
+	for _, f := range sp.flow {
+		if !seen[f.El] && f.In {
+			out[f.El] = true
+		}
+		seen[f.El] = true
+	}
+	return out, sp.flow, sp.sets
 }

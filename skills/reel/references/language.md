@@ -40,9 +40,12 @@ the line above. `# ` starts a comment. In quoted text, `\"` is a quote and
 | `box`, `card`, `circle`, `decision`, `store`, `stack` | shapes; text inside with `"…"`. A `card` wraps its text (about 250 wide, or `w=`) and takes `title="file.rs"` for a header above a rule |
 | `title`, `p`, `label` | text; `title "a ==b=="` brightens b |
 | `metric "1024" label="records kept" note="GRANT_LOG_RETAINED, share_grants.rs"` | a big number with a caption and where it comes from; `focus` underlines it |
-| `row`, `col`, `grid cols=N`, `layer`, `place` | layout: `gap`, `align`, `justify`, `pad`, `w`, `h`, `x`, `y` |
-| `laptop`, `phone`, `server`, `process`, `db`, `queue` | theme components; parts like `#api/unit1`, `#api/procs` |
-| `a -> b "label"` | connector; also `-|`, `~>`, `..>` (dashed), `<->`, `--` |
+| `row`, `col`, `grid cols=N`, `layer`, `place` | layout: `gap`, `align`, `justify`, `pad`, `w`, `h`, `x`, `y`; `flow=live` gives room only to children on screen, so `show`/`leave` inside it make the rest glide; `sides=left,right,bottom` (or `all`) draws those edges, e.g. an open bin |
+| `table` | rows of cells: each child is a `row`, its children the cells (`label` for a header, `p` for values). Columns line up, rules part the rows, and rows are live: `show`/`leave` a row, `set` a cell, `focus` a row to highlight it |
+| `laptop`, `phone`, `server`, `process`, `db` | theme components; parts like `#api/unit1`, `#api/procs` |
+| `list`, `node`, `queue`, `cell`, `lifo`, `block`, `bucket`, `balancer` | collections: put items inside (`node "3"`, `cell "A"`, servers in a `balancer`); `show` adds an item where it is written, `leave` removes it, the rest glide. `lifo` is a stack: an open bin that fills from the bottom, holding `block "x"`s, top item first. Show a hash map as a `table` (key, bucket, value), or as `bucket "0"` rows holding `node`s for its chains |
+| `arrow "label" dir=right len=40` | a short arrow on its own, `dir=left|down|up` |
+| `a -> b "label"` | connector; also `-|`, `~>`, `..>` (dashed), `<->`, `--`. An end matching several elements (`#lb -> .server`) draws one connector to each |
 | `code LANG` | indented lines or `file=PATH lines=11..15`; `focus=3..4` |
 | `diff` | indented `git diff` or `file=PR.diff path=FILE hunk=N`; `focus=+12..+14` (new) or `-12` (old) |
 
@@ -74,7 +77,8 @@ Steps run one after another after the scene's elements have entered.
 | `show SELECTOR` | draw it in now instead of when the scene opens; with `on="words"`, as it is named |
 | `say "heading"` | the scene's heading at the top; spoken when the video has a voice, with the spoken words as subtitles at the bottom; `say "short heading" speak="the spoken sentence"` is the usual form. The next step waits until the line is spoken; use `with` to run a step during it |
 | `camera zoom SELECTOR`, `camera reset` | move the view |
-| `send SELECTOR` | dot along the connector starting there |
+| `send SELECTOR` | dot along the connector starting there; `send #lb to=#s2` picks the one ending at `#s2` |
+| `set SELECTOR "text"` | change an element's text in place (a counter, a value), cross-fading; `set #n "4"` on a `node` changes its value |
 | `type SELECTOR` | type out a terminal, code or text block |
 | `mark SELECTOR lines=…` / `cells=…` | move a code or array focus; `lines=+12..+14,+20` takes several ranges |
 | `ptr #a lo=2` / `swap #a 0 3` | move pointers, swap cells |

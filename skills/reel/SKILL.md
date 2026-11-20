@@ -97,9 +97,17 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   `clear` to keep everything, or `clear keep="#flow"` to keep one diagram.
   Kept elements glide to their new place while new ones draw in beside
   them. Use `clear` alone only when the next idea needs a new picture.
-- Prefer components (`laptop`, `server`, `process`, `db`, `queue`) and
+- Prefer components (`laptop`, `server`, `process`, `db`) and
   blocks (`mermaid`, `array`, `timeline`, `metric`, `card`) over
   hand-placed boxes.
+- Show everyday structures moving rather than describing them: `list` of
+  `node`s, `queue` of `cell`s, `lifo` (stack) of `block`s, hash maps and
+  other key/value data as a `table` of rows, and a `balancer` with servers inside. Write every item the scene
+  will need, then `show` one to add it where it is written and `leave` one
+  to remove it; the rest glide. Use `set #count "3 requests"` for a
+  value that changes, and `send #lb to=#s2` to move a request along one
+  connector. For a new structure, build it as a `define` on `flow=live`
+  containers, `sides=`, `table`, `arrow` and connectors, not as a one-off layout.
 - When code is the point, read it with `file=` rather than pasting it, so
   line numbers match, and focus the lines with `focus=` or `mark`; long
   hunks fold down to those lines automatically.

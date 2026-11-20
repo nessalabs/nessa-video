@@ -72,6 +72,40 @@ type CodeBlock struct {
 type Edge struct {
 	Op       string // ->, -|, ~>, ..>, <->, --, ..
 	From, To *selector.Selector
+	// FromEl and ToEl pin the ends of one connector of a fan: a connector
+	// whose ends match several elements becomes one per pair.
+	FromEl, ToEl *Element
+}
+
+// Ends returns the elements a connector joins, looked up in scope.
+func (ed *Edge) Ends(scope *Element) (from, to []*Element) {
+	if ed.FromEl != nil {
+		from = []*Element{ed.FromEl}
+	} else if ed.From != nil {
+		from = Select(scope, ed.From)
+	}
+	if ed.ToEl != nil {
+		to = []*Element{ed.ToEl}
+	} else if ed.To != nil {
+		to = Select(scope, ed.To)
+	}
+	return from, to
+}
+
+// Fan adds, next to connector e, a copy that joins from and to.
+func (e *Element) Fan(from, to *Element) *Element {
+	y := *e
+	y.id = ""
+	y.classes = append([]string(nil), e.classes...)
+	y.Inline = append([]Decl(nil), e.Inline...)
+	y.Children = nil
+	ed := *e.Edge
+	ed.FromEl, ed.ToEl = from, to
+	y.Edge = &ed
+	if e.parent != nil {
+		e.parent.Append(&y)
+	}
+	return &y
 }
 
 // NewElement creates an element of the given kind.
@@ -112,6 +146,10 @@ func (e *Element) Clone() *Element {
 		y.Inline = append([]Decl(nil), x.Inline...)
 		y.Children = nil
 		y.Computed = nil
+		if x.Edge != nil {
+			ed := *x.Edge
+			y.Edge = &ed
+		}
 		y.Carried = true
 		y.source = x.Identity()
 		m[x] = &y
