@@ -56,6 +56,9 @@ const (
 	SeqHead    = 56.0
 	SeqRow     = 44.0
 	SeqFrame   = 30.0 // a frame's opening or else line: room for its tab
+	BarPitch   = 40.0 // a horizontal bar chart's row
+	ChartHead  = 40.0 // a horizontal bar chart's header line
+	Readout    = 30.0 // the line under a timeline that a mark explains
 )
 
 // SeqRowHeight is the height of one sequence diagram item.
@@ -113,8 +116,9 @@ type engine struct {
 	st   State // children kept out of the flow and text set by steps
 	size map[*c.Element][2]float64
 	res  Result
-	flip map[*c.Element]bool    // rows and columns turned the other way to fit
-	room map[*c.Element]float64 // minimum gap after a child, to fit a connector label
+	flip map[*c.Element]bool     // rows and columns turned the other way to fit
+	room map[*c.Element]float64  // minimum gap after a child, to fit a connector label
+	alts map[*c.Element][]string // every text a set step gives an element in the scene
 }
 
 // Scene lays out root's children as a centred column inside area.
@@ -246,7 +250,15 @@ type Phase struct {
 // share the turns and scale of the layout with everything in the flow, so
 // a growing list moves its neighbours instead of reshaping the frame.
 func SceneStates(root *c.Element, area Rect, m Measurer, opt Options, states []State, at [][2]float64) Result {
-	e := &engine{m: m, opt: opt, flip: map[*c.Element]bool{}, room: map[*c.Element]float64{}}
+	e := &engine{m: m, opt: opt, flip: map[*c.Element]bool{}, room: map[*c.Element]float64{}, alts: map[*c.Element][]string{}}
+	for _, st := range states {
+		for el, t := range st.Text {
+			if len(e.alts[el]) == 0 {
+				e.alts[el] = []string{el.Text}
+			}
+			e.alts[el] = append(e.alts[el], t)
+		}
+	}
 	e.labelRoom(root)
 	w, h := e.fitFlips(root, area)
 	full := e.finish(root, area, w, h, 0)
@@ -642,9 +654,16 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		n := float64(len(el.Array.Values))
 		return n*CellSize + (n-1)*CellGap, PointerTop + CellSize + IndexBand
 	case el.Chart != nil:
+		if el.Chart.Horizontal {
+			return 560, ChartHead + BarPitch*float64(len(el.Chart.Rows)) + 8
+		}
 		return 460, 300
 	case el.Timeline != nil:
-		return 600, 28 + LaneHeight*float64(len(el.Timeline.Lanes)) + AxisBand
+		h := 28 + LaneHeight*float64(len(el.Timeline.Lanes)) + AxisBand
+		if el.Timeline.Readout {
+			h += Readout
+		}
+		return 600, h
 	case kind == "math":
 		if ts, ok := e.m.(Typesetter); ok {
 			if _, w, h, err := ts.Typeset(el.Text, num(el, "size", MathSize)); err == nil {
@@ -1264,6 +1283,7 @@ func (e *engine) table(el *c.Element, at *Rect) (float64, float64) {
 			if at == nil {
 				w, h = e.measure(cell)
 			}
+			w = max(w, e.widest(cell))
 			for len(colW) <= j {
 				colW = append(colW, 0)
 			}
@@ -1306,6 +1326,35 @@ func (e *engine) table(el *c.Element, at *Rect) (float64, float64) {
 		y += rowH[i]
 	}
 	return W, H
+}
+
+// widest is how wide a table cell gets with any text a set step gives it
+// or its parts in the scene, so a column keeps one width and a changed
+// cell cross-fades in place instead of moving its neighbours.
+func (e *engine) widest(cell *c.Element) float64 {
+	if len(e.alts) == 0 || e.st.Text == nil {
+		return 0
+	}
+	var w float64
+	changed := false
+	cell.Walk(func(x *c.Element) {
+		for _, t := range e.alts[x] {
+			was, had := e.st.Text[x]
+			e.st.Text[x] = t
+			cw, _ := e.measure(cell)
+			w = max(w, cw)
+			if had {
+				e.st.Text[x] = was
+			} else {
+				delete(e.st.Text, x)
+			}
+			changed = true
+		}
+	})
+	if changed {
+		e.measure(cell) // leave the sizes as this state has them
+	}
+	return w
 }
 
 // TreeKids lists a tree node's children in the tree: its child elements,

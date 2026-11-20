@@ -554,7 +554,8 @@ func (r *resolver) step(n *script.Node) c.Step {
 	args := joinGroups(n.Args)
 	for _, p := range n.Props {
 		st.Decls = append(st.Decls, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
-		if n.Kind != "ptr" { // ptr takes pointer names as keys
+		// ptr takes pointer names as keys, and set on a chart row labels
+		if n.Kind != "ptr" && (n.Kind != "set" || c.IsProp(p.Key)) {
 			r.checkProp(p.Key, p.Pos, nil)
 		}
 		switch p.Key {
@@ -605,8 +606,8 @@ func (r *resolver) step(n *script.Node) c.Step {
 		_, outline := n.Prop("outline")
 		if target != nil && !hasQuoted(args) && (tone || outline) {
 			st.NoText = true // set #b outline=bad changes only a colour
-		} else if target == nil || st.Text == "" && !hasQuoted(args) {
-			r.diags.Errorf(n.Pos, `e.g. set #count "4", or set #s "Open" tone=bad`, "set needs an element and its new quoted text")
+		} else if target == nil || st.Text == "" && !hasQuoted(args) && len(c.DataDecls(st.Decls)) == 0 {
+			r.diags.Errorf(n.Pos, `e.g. set #count "4", set #s "Open" tone=bad, or set #chart /checkout=240`, "set needs an element and its new quoted text")
 			return st
 		}
 		st.Target = r.parseSel(target.Text, target.Pos)
@@ -650,7 +651,16 @@ func (r *resolver) step(n *script.Node) c.Step {
 			r.diags.Errorf(n.Pos, "e.g. `walk #flow C G H`", "walk needs a diagram and node ids")
 			return st
 		}
+	case "sort":
+		for _, a := range args[1:] {
+			r.oneOf(a.Text, a.Pos, []string{"desc", "asc"}, "sort order")
+		}
 	case "mark":
+		_, row := n.Prop("row")
+		_, span := n.Prop("span")
+		if row || span {
+			break
+		}
 		if v, ok := n.Prop("cells"); ok {
 			if _, err := source.ParseCells(v); err != nil {
 				r.diags.Errorf(n.Pos, "e.g. mark #a cells=2..4 (0-based)", "bad cells %q: %v", v, err)
@@ -660,7 +670,7 @@ func (r *resolver) step(n *script.Node) c.Step {
 				r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14", "bad lines %q: %v", v, err)
 			}
 		} else {
-			r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14 or mark #a cells=2..4", "mark needs lines= or cells=")
+			r.diags.Errorf(n.Pos, "e.g. mark #diff lines=+12..+14, mark #a cells=2..4, mark #chart row=/checkout or mark #tl span=orders", "mark needs lines=, cells=, row= or span=")
 		}
 	case "camera":
 		if len(args) == 0 {
@@ -1336,6 +1346,7 @@ func (r *resolver) validate(s *c.Scene) {
 			r.diags.Errorf(st.Pos, r.idHint(s.Root, st.Target.Src), "%s target %s matches nothing in scene %s", st.Verb, st.Target.Src, s.Name)
 		}
 	}
+	r.checkData(s)
 }
 
 func uniq(xs []string) []string {
