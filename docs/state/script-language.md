@@ -8,6 +8,7 @@ parent: reel
 sources:
   - internal/script/parse.go
   - internal/script/parse_test.go
+  - internal/markup/markup.go
   - internal/selector/selector.go
   - examples/cache-refresh.reel
 diagramLinks: {}
@@ -41,6 +42,29 @@ scene request
 - In quoted text, `\"` is a quote, `\\` a backslash and `\n` a new line. On a
   `math` line other backslashes are left for TeX.
   So does a block between two ```` ``` ```` lines, such as Mermaid.
+
+## Marks inside text
+
+Any quoted text, including a `say` caption, its `speak=` words, card text,
+metric labels and diagram labels, can mark parts of itself:
+
+- `==words==` are bright.
+- `__words__` are underlined.
+- `{bad:words}` are coloured by a tone: `bad` (red), `good` (green), `warn`
+  (amber) or `info` (blue); `red`, `green`, `amber`, `yellow` and `blue` are
+  other names for them. The theme sets each colour with its `tone-NAME`
+  token.
+
+Marks can sit inside each other: `{bad:==failing==}` is bright red. A tone
+inside `speak=` colours those words in the subtitles, so `speak="one check
+is {bad:failing}"` shows "failing" in red as it is said; the voice never
+hears the marks. A tone is as bright as the text around it, so a dimmed
+element's tones dim too, and a mark that wraps onto a new line carries on
+there. A brace that does not start with a tone name, such as `{threadId}`,
+is ordinary text.
+
+`tone=bad` on a box, card, metric or text element colours the whole
+element, its outline and its text.
 
 ## Mistakes the parser reports
 

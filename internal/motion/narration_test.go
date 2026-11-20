@@ -87,7 +87,7 @@ scene one
 	}
 	say := &r.Video.Scenes[0].Steps[0]
 	say.Speech = 3
-	say.Said = []c.SaidWord{{"first", 0, .3}, {"the", .3, .5}, {"cache,", .5, 1}, {"then", 1.2, 1.5}, {"the", 1.5, 1.6}, {"database.", 1.6, 2.4}}
+	say.Said = []c.SaidWord{{Text: "first", Start: 0, End: .3}, {Text: "the", Start: .3, End: .5}, {Text: "cache,", Start: .5, End: 1}, {Text: "then", Start: 1.2, End: 1.5}, {Text: "the", Start: 1.5, End: 1.6}, {Text: "database.", Start: 1.6, End: 2.4}}
 	tl := New(r.Video, DefaultTimings()).Scenes[0].Timeline()
 	if !near(tl[1].Start, tl[0].Start+.5-HighlightLead) {
 		t.Errorf("focus #a at %.2f; want just before \"cache\" at %.2f", tl[1].Start, tl[0].Start+.5)

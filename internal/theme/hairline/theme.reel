@@ -47,6 +47,12 @@ tokens
   diff-add      #5FD39B
   diff-del      #F2777B
 
+  # tones: {bad:words} in any text, or tone=bad on an element
+  tone-bad      #F2777B
+  tone-good     #5FD39B
+  tone-warn     #E8C26A
+  tone-info     #7FB2F0
+
   # motion, in seconds
   motion-draw     0.6
   motion-fade     0.35

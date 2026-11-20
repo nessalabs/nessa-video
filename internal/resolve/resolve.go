@@ -917,6 +917,8 @@ func (r *resolver) checkValue(key, val string, pos diag.Pos) {
 		r.oneOf(val, pos, c.EnterModes, key+" mode")
 	case "state":
 		r.oneOf(val, pos, c.States, "state")
+	case "tone":
+		r.oneOf(val, pos, []string{"bad", "good", "warn", "info", "red", "green", "amber", "yellow", "blue"}, "tone")
 	case "dir":
 		r.oneOf(val, pos, []string{"row", "col", "LR", "RL", "TD", "TB"}, "direction")
 	case "hidden", "fit":

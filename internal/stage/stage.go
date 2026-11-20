@@ -14,6 +14,7 @@ import (
 
 	c "github.com/nessalabs/nessa-video/internal/composition"
 	"github.com/nessalabs/nessa-video/internal/layout"
+	"github.com/nessalabs/nessa-video/internal/markup"
 	"github.com/nessalabs/nessa-video/internal/motion"
 	"github.com/nessalabs/nessa-video/internal/render"
 	"github.com/nessalabs/nessa-video/internal/selector"
@@ -229,6 +230,7 @@ func (s *Stage) Still(sp *motion.ScenePlan) *render.List {
 
 type painter struct {
 	s       *Stage
+	tone    string // the tone of the element being drawn, or ""
 	l       *render.List
 	view    render.Affine // camera transform
 	m       render.Affine // camera plus the current element's rise
@@ -268,9 +270,10 @@ func (p *painter) text(s string, x, y float64, t layout.Type, cl color.NRGBA, an
 	p.l.Ops = append(p.l.Ops, render.Op{Kind: render.TextOp, M: p.m, Text: s, X: x, Y: y, Font: t.Font, Size: t.Size, Anchor: an, Color: cl})
 }
 
-// runs draws text with ==emphasis== spans in the bright colour.
+// runs draws text with its inline marks: ==bright== spans in hi,
+// __underlined__ ones with a line, {tone:words} in the tone's colour. A tone
+// is as bright as the text around it, so a dimmed element dims its tones.
 func (p *painter) runs(s string, x, y float64, t layout.Type, base, hi color.NRGBA, an render.Anchor) {
-	parts := strings.Split(s, "==")
 	total := p.s.Measure.Measure(layout.Plain(s), t.Font, t.Size)
 	switch an {
 	case render.Middle:
@@ -278,26 +281,49 @@ func (p *painter) runs(s string, x, y float64, t layout.Type, base, hi color.NRG
 	case render.End:
 		x -= total
 	}
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
+	for _, sp := range markup.Parse(s) {
 		cl := base
-		if i%2 == 1 {
+		if sp.Hi {
 			cl = hi
 		}
-		under := strings.Contains(part, "__")
-		part = strings.ReplaceAll(part, "__", "")
-		p.text(part, x, y, t, cl, render.Start)
-		w := p.s.Measure.Measure(part, t.Font, t.Size)
-		if under {
+		if sp.Tone != "" {
+			cl = p.s.toneCol(sp.Tone)
+			if !sp.Hi {
+				cl = p.s.dimLike(cl, base)
+			}
+		}
+		p.text(sp.Text, x, y, t, cl, render.Start)
+		w := p.s.Measure.Measure(sp.Text, t.Font, t.Size)
+		if sp.Under {
 			d := p.draw
 			p.draw = 1
-			p.stroke(fmt.Sprintf("M%g %gH%g", x, y+4, x+w), hi, false)
+			p.stroke(fmt.Sprintf("M%g %gH%g", x, y+4, x+w), cl, false)
 			p.draw = d
 		}
 		x += w
 	}
+}
+
+// toneDefaults colour tones for themes that set no tone tokens.
+var toneDefaults = map[string]string{"bad": "#F2777B", "good": "#5FD39B", "warn": "#E8C26A", "info": "#7FB2F0"}
+
+// toneCol is a tone's colour: the theme's tone-NAME token, or a default.
+func (s *Stage) toneCol(tone string) color.NRGBA {
+	if _, ok := s.Tokens["tone-"+tone]; ok {
+		return s.col("tone-" + tone)
+	}
+	if v, ok := toneDefaults[tone]; ok {
+		return s.col(v)
+	}
+	return s.col("hi")
+}
+
+// dimLike takes cl as far toward the ground as like is from full ink, so a
+// tone sits at the same brightness as the text it is set in.
+func (s *Stage) dimLike(cl, like color.NRGBA) color.NRGBA {
+	lum := func(c color.NRGBA) float64 { return 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B) }
+	f := math.Min(1, lum(like)/math.Max(1, lum(s.col("ink"))))
+	return lerpColor(s.col("bg"), cl, 0.35+0.65*f)
 }
 
 func rr(r layout.Rect, rad float64) string {
@@ -392,6 +418,16 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	p.opacity = opacity
 	p.draw = ap.Draw
 
+	p.tone = ""
+	if v, ok := e.Computed["tone"]; ok {
+		if t, ok := markup.Tones[strings.ToLower(v.Value)]; ok {
+			// a toned element keeps its state's brightness in the tone's colour
+			p.tone = t
+			tc := p.s.toneCol(t)
+			lk.text = p.s.dimLike(tc, lk.text)
+			lk.line = p.s.dimLike(tc, lk.line)
+		}
+	}
 	textColor := lk.text
 	if v, ok := e.Computed["color"]; ok && state == "rest" {
 		textColor = p.s.col(v.Value)
@@ -469,8 +505,8 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 }
 
 // reveal returns the lines with only the first share of visible characters
-// shown. Inline marks (== and __) take no time and are never cut in half,
-// and a mark left open is closed so the shown part keeps its emphasis.
+// shown. Inline marks take no time and are never cut in half, and a mark
+// left open is closed so the shown part keeps its look.
 func reveal(lines []string, share float64) []string {
 	if share >= 1 {
 		return lines
@@ -485,29 +521,9 @@ func reveal(lines []string, share float64) []string {
 		if left <= 0 {
 			break
 		}
-		var b strings.Builder
-		open := map[string]bool{}
-		r := []rune(l)
-		for i := 0; i < len(r); i++ {
-			if i+1 < len(r) && (r[i] == '=' && r[i+1] == '=' || r[i] == '_' && r[i+1] == '_') {
-				m := string(r[i : i+2])
-				open[m] = !open[m]
-				b.WriteString(m)
-				i++
-				continue
-			}
-			if left <= 0 {
-				break
-			}
-			b.WriteRune(r[i])
-			left--
-		}
-		for _, m := range []string{"__", "=="} {
-			if open[m] {
-				b.WriteString(m)
-			}
-		}
-		out = append(out, b.String())
+		cut, used := markup.Cut(l, left)
+		left -= used
+		out = append(out, cut)
 	}
 	return out
 }
@@ -1026,6 +1042,9 @@ func (p *painter) metric(e *c.Element, r layout.Rect, lk look, ap motion.Appeara
 	case "dim":
 		num = s.col("ink-dim")
 	}
+	if p.tone != "" {
+		num = s.dimLike(s.toneCol(p.tone), num)
+	}
 	lines := p.lay.Lines[e]
 	y := r.Y + t.Size
 	for i, ln := range lines {
@@ -1113,8 +1132,12 @@ func (p *painter) subtitle(words []c.SaidWord, elapsed, cx, y float64, t layout.
 		total += widths[i]
 	}
 	x := cx - total/2
-	dim, said, now := s.col("ink-dim"), s.col("ink-2"), s.col("hi")
 	for i, w := range line {
+		dim, said, now := s.col("ink-dim"), s.col("ink-2"), s.col("hi")
+		if w.Tone != "" { // a toned word keeps its colour, dim until said
+			now = s.toneCol(w.Tone)
+			said, dim = s.dimLike(now, said), s.dimLike(now, dim)
+		}
 		cl := dim
 		switch {
 		case elapsed < w.Start:

@@ -1,6 +1,7 @@
 package composition
 
 import (
+	"github.com/nessalabs/nessa-video/internal/markup"
 	"strings"
 	"time"
 	"unicode"
@@ -68,13 +69,14 @@ type WordTime struct{ Start, End float64 }
 type SaidWord struct {
 	Text       string
 	Start, End float64
+	Tone       string // the word's {tone:…} in the spoken text, or ""
 }
 
 // SpokenWords splits narration into words the way on= matches them:
 // lower case, letters and digits only, ==marks== and punctuation dropped.
 func SpokenWords(s string) []string {
 	var out []string
-	for _, f := range strings.Fields(strings.ReplaceAll(s, "==", "")) {
+	for _, f := range strings.Fields(markup.Strip(s)) {
 		w := strings.Map(func(r rune) rune {
 			if unicode.IsLetter(r) || unicode.IsDigit(r) {
 				return unicode.ToLower(r)

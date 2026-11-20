@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/nessalabs/nessa-video/internal/markup"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,7 @@ func CacheDir() string {
 
 // Plain removes inline marks such as ==this== from text before speaking it.
 func Plain(s string) string {
-	return strings.NewReplacer("==", "", "__", "", "`", "").Replace(s)
+	return strings.ReplaceAll(markup.Strip(s), "`", "")
 }
 
 // Silent is a voice that produces silence as long as reading the text takes.

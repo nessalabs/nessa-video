@@ -37,7 +37,7 @@ var Props = []string{
 	// layout
 	"w", "h", "r", "gap", "align", "justify", "pad", "wrap", "cols", "span", "x", "y", "scale",
 	// look and state
-	"state", "font", "color", "size", "note", "label", "title", "route", "side",
+	"state", "font", "color", "tone", "size", "note", "label", "title", "route", "side",
 	// motion
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
@@ -76,8 +76,8 @@ func contains(xs []string, s string) bool {
 // the ones every element takes (state, enter, exit, hidden, w, h). It is
 // what `reel ref` prints.
 var KindProps = map[string]string{
-	"box":      `"text" r= (corner radius)`,
-	"card":     `"text that wraps" title="header" w= (wrap width)`,
+	"box":      `"text" r= (corner radius) tone=bad|good|warn|info`,
+	"card":     `"text that wraps" title="header" w= (wrap width) tone=`,
 	"circle":   `"text" r=`,
 	"decision": `"text"`,
 	"store":    `"text"`,
@@ -85,7 +85,7 @@ var KindProps = map[string]string{
 	"title":    `"text with ==emphasis=="`,
 	"p":        `"text" (wraps)`,
 	"label":    `"text" color= font= size=`,
-	"metric":   `"1024" label="what it counts" note="where it comes from" size=`,
+	"metric":   `"1024" label="what it counts" note="where it comes from" size= tone=bad|good|warn|info`,
 	"code":     `LANG, indented lines or file= lines=; focus= context= (lines kept around focus)`,
 	"diff":     `indented git diff or file= path= hunk=; focus=+12..+14 context=`,
 	"terminal": `indented lines; "$ " starts a command`,

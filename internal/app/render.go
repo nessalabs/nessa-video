@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/nessalabs/nessa-video/internal/markup"
 	"image"
 	"io"
 	"math"
@@ -181,6 +182,7 @@ func applySpeech(v *c.Video, speech map[[2]int]voice.Spoken) {
 		for _, w := range timed {
 			st.Said = append(st.Said, c.SaidWord{Text: w.Text, Start: w.Start, End: w.End})
 		}
+		toneWords(st.Said, st.Spoken())
 		if _, own := st.Lookup("speak"); !own {
 			st.Words = alignWords(st.Text, timed)
 		}
@@ -322,4 +324,41 @@ func alignWords(caption string, spoken []voice.Word) []c.WordTime {
 		found[i] = true
 	}
 	return out
+}
+
+// toneWords gives each said word the {tone:…} its word has in the spoken
+// text. Words are matched in order, ignoring case and punctuation, so a
+// voice that says a word differently only loses that word's tone.
+func toneWords(said []c.SaidWord, spoken string) {
+	words := strings.Fields(voice.Plain(spoken))
+	tones := markup.WordTones(strings.ReplaceAll(spoken, "`", ""))
+	if len(tones) != len(words) {
+		return
+	}
+	any := false
+	for _, t := range tones {
+		any = any || t != ""
+	}
+	if !any {
+		return
+	}
+	norm := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return unicode.ToLower(r)
+			}
+			return -1
+		}, s)
+	}
+	j := 0
+	for i := range said {
+		nw := norm(said[i].Text)
+		for k := j; k < len(words) && k < j+4; k++ {
+			if norm(words[k]) == nw {
+				said[i].Tone = tones[k]
+				j = k + 1
+				break
+			}
+		}
+	}
 }

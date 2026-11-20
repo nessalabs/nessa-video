@@ -5,6 +5,7 @@
 package motion
 
 import (
+	"github.com/nessalabs/nessa-video/internal/markup"
 	"math"
 	"strconv"
 	"strings"
@@ -579,7 +580,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			start = math.Max(start, voiceFree)
 			speech := st.Speech
 			if speech <= 0 {
-				words := len(strings.Fields(strings.ReplaceAll(st.Spoken(), "==", "")))
+				words := len(strings.Fields(markup.Strip(st.Spoken())))
 				speech = float64(words) / tm.WordsPerSec
 			}
 			sp.captions = append(sp.captions, Caption{Text: st.Text, Start: start, Step: si, Speech: st.Speech, Words: st.Words, Said: st.Said})

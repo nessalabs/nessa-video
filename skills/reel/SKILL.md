@@ -85,6 +85,13 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   write an API key into a script; it comes from `ELEVENLABS_API_KEY` or a
   local `.env`. If no key is available, render with `--mute`.
 - Use `==…==` for the two or three words of a heading that matter.
+- Colour carries meaning, so use it only for outcomes: `{bad:…}` for a
+  failure, a refusal or a bug; `{good:…}` for what passes or is fixed;
+  `{warn:…}` for a risk or something still pending; `{info:…}` rarely.
+  Mark the one or two words that carry the outcome ("one check is
+  {bad:failing}"), in a heading, a card, or the `speak=` words so the
+  subtitle shows it as it is said. `tone=bad` colours a whole metric, box
+  or card. Leave everything else grey; a frame full of colour says nothing.
 - Use `camera zoom` or a new scene instead of crowding.
 - Keep one picture across scenes when the story continues: leave out
   `clear` to keep everything, or `clear keep="#flow"` to keep one diagram.

@@ -239,7 +239,7 @@ func (p *painter) timelineBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 					if sp.Strong {
 						cl = s.col("hi")
 					}
-					p.text(sp.Label, b.X+8, b.CY()+4, small, cl, render.Start)
+					p.runs(sp.Label, b.X+8, b.CY()+4, small, cl, s.col("hi"), render.Start)
 				}
 			}
 		}
@@ -320,7 +320,7 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 		p.stroke(fmt.Sprintf("M%g %gV%g", x, head.Bottom(), bottom), s.col("line-0"), true)
 		p.draw = 1
 		p.opacity = opacity * ap.FillIn
-		p.text(name, x, head.CY()+box.Size*.36, box, lk.text, render.Middle)
+		p.runs(name, x, head.CY()+box.Size*.36, box, lk.text, p.s.col("hi"), render.Middle)
 	}
 
 	rows := 0
@@ -435,7 +435,7 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 				p.opacity = opacity * ap.FillIn * vis
 				p.fill(rr(nb, 5), s.col("panel"))
 				p.stroke(rr(nb, 5), s.col("line-1"), false)
-				p.text(it.Text, nb.CX(), nb.CY()+4, lab, s.col("ink"), render.Middle)
+				p.runs(it.Text, nb.CX(), nb.CY()+4, lab, s.col("ink"), s.col("hi"), render.Middle)
 			}
 			y += layout.SeqRow
 			row++
@@ -465,7 +465,7 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 						p.chevron([2]float64{x0 + 36, ay}, [2]float64{x0 + 4, ay}, cl)
 					}
 					p.opacity = opacity * ap.FillIn * clamp01(vis*2-1)
-					p.text(text, x0+48, ay-9+lab.Size*.36, lab, s.col("ink"), render.Start)
+					p.runs(text, x0+48, ay-9+lab.Size*.36, lab, s.col("ink"), s.col("hi"), render.Start)
 				} else {
 					dir := 1.0
 					if x1 < x0 {
@@ -482,7 +482,7 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 						}
 					}
 					p.opacity = opacity * ap.FillIn * clamp01(vis*2-1)
-					p.text(text, (x0+x1)/2, ay-9, lab, s.col("ink"), render.Middle)
+					p.runs(text, (x0+x1)/2, ay-9, lab, s.col("ink"), s.col("hi"), render.Middle)
 				}
 				p.draw = 1
 			}

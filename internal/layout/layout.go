@@ -5,6 +5,7 @@ package layout
 
 import (
 	"fmt"
+	"github.com/nessalabs/nessa-video/internal/markup"
 	"math"
 	"sort"
 	"strconv"
@@ -345,7 +346,7 @@ func FontKey(f string) string {
 
 // Plain strips inline marks (==x==, __x__) from text.
 func Plain(s string) string {
-	return strings.NewReplacer("==", "", "__", "").Replace(s)
+	return markup.Strip(s)
 }
 
 var textKinds = map[string]bool{"title": true, "p": true, "label": true, "metric": true, "code": true}
@@ -576,7 +577,7 @@ func (e *engine) wrap(s string, t Type, maxW float64) []string {
 		}
 		out = append(out, cur)
 	}
-	return out
+	return markup.Balance(out)
 }
 
 func (e *engine) place(el *c.Element, r Rect) {
@@ -873,7 +874,7 @@ func Untab(s string) string { return strings.ReplaceAll(s, "\t", "    ") }
 
 // SeqHeadWidth is the width of a participant's box for its label.
 func SeqHeadWidth(m Measurer, label string, t Type) float64 {
-	return max(136, m.Measure(label, t.Font, t.Size)+36)
+	return max(136, m.Measure(Plain(label), t.Font, t.Size)+36)
 }
 
 // sequenceColumns places a sequence diagram's lifelines the way Mermaid
@@ -886,7 +887,7 @@ func (e *engine) sequenceColumns(el *c.Element) float64 {
 	lab := e.opt.Type["label"]
 	head := e.opt.Type["box"]
 	head.Size = 14
-	text := func(s string) float64 { return e.m.Measure(s, lab.Font, lab.Size) }
+	text := func(s string) float64 { return e.m.Measure(Plain(s), lab.Font, lab.Size) }
 	hw := make([]float64, n)
 	for i, p := range sb.Participants {
 		hw[i] = SeqHeadWidth(e.m, p, head)

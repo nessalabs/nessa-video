@@ -129,7 +129,7 @@ li{margin:4px 0}
 <ul>
 <li>A line is <code>kind #id .class "text" key=value …</code>. Only <code>kind</code> is required. Indented lines are children.</li>
 <li>Connectors are their own lines: <code>a -&gt; b</code> arrow, <code>a -| b</code> elbow, <code>a ~&gt; b</code> curve, <code>a ..&gt; b</code> dashed, <code>a &lt;-&gt; b</code> both ways, <code>a -- b</code> plain line.</li>
-<li>Inline text marks: <code>==bright==</code> for emphasis, <code>__text__</code> for underline, <code>`code`</code> for mono.</li>
+<li>Inline text marks: <code>==bright==</code> for emphasis, <code>__text__</code> for underline, <code>`code`</code> for mono, <code>{bad:text}</code> (also good, warn, info) for a tone colour.</li>
 <li>Parts of a component are addressed with a slash: <code>#api/unit1</code>, <code>#api/procs</code>. The dot is kept for classes.</li>
 <li>Steps in a scene run in order. <code>with</code> runs a step at the same time as the previous one; <code>wait 0.5s</code> pauses. Exact timing is covered under Motion and timing.</li>
 <li>Elements persist into the next scene unless the scene starts with <code>clear</code>, so a story can build up and the camera can move through it.</li>
