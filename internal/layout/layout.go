@@ -221,6 +221,17 @@ func (e *engine) finish(root *c.Element, area Rect, w, h, fit float64) Result {
 type State struct {
 	Out  map[*c.Element]bool
 	Text map[*c.Element]string
+	// Order holds a container's children in the order a step left them
+	// (`move #x first`); a container not in it keeps its written order.
+	Order map[*c.Element][]*c.Element
+}
+
+// kids returns el's children in their current order.
+func (e *engine) kids(el *c.Element) []*c.Element {
+	if o, ok := e.st.Order[el]; ok {
+		return o
+	}
+	return el.Children
 }
 
 // Phase is a later layout of a scene that elements glide to, from Start
@@ -557,7 +568,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		horizontal := e.horizontal(el)
 		var main, cross float64
 		var prev *c.Element
-		for _, ch := range el.Children {
+		for _, ch := range e.kids(el) {
 			if !e.inFlow(ch) {
 				continue
 			}
@@ -692,10 +703,30 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		return 2 * r, 2 * r
 	case kind == "meter":
 		n := max(num(el, "max", 5), 1)
-		if str(el, "kind", "slots") == "bar" {
-			return num(el, "len", 160), MeterSlot
+		var w, h float64
+		switch str(el, "kind", "slots") {
+		case "bar":
+			w, h = num(el, "len", 160), MeterSlot
+		case "dots":
+			d := 2 * num(el, "r", MeterDot)
+			w, h = n*d+(n-1)*MeterDotGap, d
+		default:
+			w, h = n*MeterSlot+(n-1)*MeterGap, MeterSlot
 		}
-		return n*MeterSlot + (n-1)*MeterGap, MeterSlot
+		if u := str(el, "unit", ""); u != "" {
+			// a count under it: "6 of 6 tokens"
+			t := e.opt.Type["label"]
+			mx := strconv.Itoa(int(n))
+			w = max(w, e.m.Measure(mx+" of "+mx+" "+u, t.Font, t.Size))
+			h += MeterCaption
+		}
+		return w, h
+	case kind == "status":
+		// a dot and its label; the countdown ring a play step shows sits
+		// outside this box, to the right, so the pair stays centred
+		t := e.opt.Type["label"]
+		w := StatusDot + StatusGap + e.m.Measure(Plain(e.textOf(el)), t.Font, t.Size)
+		return w, t.Size * 1.35
 	case kind == "badge":
 		t := e.opt.Type["label"]
 		return e.m.Measure(Plain(e.textOf(el)), t.Font, t.Size) + 18, 22
@@ -822,7 +853,7 @@ func (e *engine) place(el *c.Element, r Rect) {
 		align := str(el, "align", "center")
 		var kids []*c.Element
 		var used float64
-		for _, ch := range el.Children {
+		for _, ch := range e.kids(el) {
 			if !e.inFlow(ch) {
 				continue
 			}
@@ -1398,6 +1429,14 @@ func (e *engine) tree(el *c.Element, at *Rect) (float64, float64) {
 
 // Meter sizes: one slot's side and the gap between slots.
 const MeterSlot, MeterGap = 14.0, 6.0
+
+// Dot meters: a dot's radius and the gap between dots, and the band a
+// count under a meter takes.
+const MeterDot, MeterDotGap, MeterCaption = 5.0, 6.0, 24.0
+
+// Status sizes: the dot's width, the gap after it, and the countdown
+// ring's radius and its gap from the label.
+const StatusDot, StatusGap, StatusRing, StatusRingGap = 7.0, 8.0, 6.5, 10.0
 
 // SpotRegion is where an isolated element goes for a layout: the left part
 // of the frame for left, the top for center, the right part for right.

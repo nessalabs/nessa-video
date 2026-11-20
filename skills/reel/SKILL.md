@@ -114,6 +114,16 @@ for a chart, timeline or terminal; a timeline that shows order only takes
 - For services, show load with `meter`, requests with `send ... reply`,
   health checks with `ping`, and failures with `fail`/`recover`; keep a
   failed element where it is rather than removing it.
+- For system design use the components: `breaker #cb "Closed"`,
+  `limiter #rl tokens=6`, `cache #c count=3` with `entry` rows. Send
+  labelled requests one at a time: `send #client to=#svc "req 1"
+  reply="{good:200}"` travels every hop and comes back on its own lane;
+  `send #client "req 5" reply="{bad:503}"` is refused at the breaker;
+  `send #client to=#api "req 1" spend=#rl` takes a token. Change state
+  with `set #cb "Open" tone=bad`, run its countdown with `play #cb for=4s`
+  (`with send …` meanwhile), `dim` the cut-off connector (give it a class),
+  refill with `set #rl/tokens "6" for=3s`, move a cache hit up with
+  `move #u7 first`, and say what happened in a readout label with `set`.
 - For branching, merging and rebasing use a `git` block and `play` it as
   you talk: `play #g to=3 on="branch"`, then `play #g to=6`.
 - Anything can travel: `move #job to=#worker` takes any element to

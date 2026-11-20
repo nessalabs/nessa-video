@@ -70,6 +70,7 @@ style
   table      flow=live
   aside      gap=20 align=start
   tree       gap=28
+  entry      align=stretch
   box        enter=fade
   card       enter=fade
   circle     enter=fade
@@ -181,3 +182,43 @@ define balancer label="load balancer"
     col #pool flow=live gap=16 align=start
       slot
   #lb -> #pool>*
+
+# System components. They are built on engine primitives: `status` (a toned
+# dot and label with an inline countdown ring), dot meters, `outline=`,
+# rounded frames (`sides=all r=12`), `anchor=true` (where connectors meet
+# the component) and live lists. Sends that carry `reply=` travel two
+# lanes, so a request and its answer never share a line.
+
+# a circuit breaker: its state above (set #cb "Open" tone=bad, play #cb
+# for=4s for the countdown), the breaker, and its failures below
+define breaker label="Breaker" tone=good limit=3
+  col gap=12 align=center
+    status #state "{text}" tone={tone}
+    box #box "{label}" w=120 h=64 r=12 outline={tone} anchor=true
+    row #failures gap=8 align=center
+      label #flabel "failures"
+      meter #fails "0" max={limit} kind=dots r=4 tone=bad
+
+# a token-bucket rate limiter: a request that spends a token
+# (send … spend=#rl) takes one; set #rl/tokens "6" for=3s refills it
+define limiter tokens=6 label="Limiter" unit="tokens"
+  col #box sides=all r=12 w=150 pad=14 gap=12 align=center anchor=true
+    label #label "{label}" font=sans-500 size=15 color=ink
+    meter #tokens "{tokens}" max={tokens} kind=dots tone=info unit="{unit}"
+
+# a cache: a titled list of entries with a count. Put `entry`s inside, the
+# newest first; show adds one at the top, leave evicts one, move #e first
+# moves a hit to the top.
+define cache size=3 count=0 label="Cache" depth=120 w=240
+  col #box sides=all r=12 w={w} gap=0 align=stretch anchor=true
+    row #head justify=between align=center h=40 pad=14
+      label #label "{label}" font=sans-500 size=15 color=ink
+      label #count "{count} of {size}"
+    col #rows flow=live gap=0 h={depth} align=stretch
+      slot
+
+# one key and value in a cache
+define entry value=""
+  row #row justify=between align=center h=40 pad=14 sides=top
+    label #key "{text}"
+    label #value "{value}" color=ink

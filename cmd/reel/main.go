@@ -61,6 +61,13 @@ Commands:
                 Copy a built-in pack to DIR (default themes/NAME) to edit it.
   version       Print the version.
 
+System design: the hairline theme has breaker, limiter and cache (with
+entry rows). Requests travel as labelled cards on their own lane and
+answers come back on another: send #client to=#svc "req 1" reply="200";
+spend=#rl takes a limiter token; set #cb "Open" tone=bad changes a state
+light; play #cb for=4s runs its countdown; move #e first reorders a list.
+See examples/systems.reel and reel ref.
+
 Narration: put "voice phonon" under the video line to narrate with the
 built-in local voice (Harper; no account or network needed), or
 "voice elevenlabs VOICE_ID" with ELEVENLABS_API_KEY set or in a .env file.
@@ -182,6 +189,7 @@ func ref() {
 		}
 	}
 	fmt.Println("  laptop, phone, server, process, db, queue: theme components; run `reel theme export hairline` to see their parts")
+	fmt.Println("  breaker \"Closed\" label= tone= limit=3, limiter tokens=6 unit=, cache count= size=3 (holds entry \"key\" value=): system components")
 	fmt.Println()
 	sec("Steps", c.Verbs)
 	sec("States", c.States)

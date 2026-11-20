@@ -1,0 +1,89 @@
+video "System components"
+  size 1920x1080  fps 30
+  voice silent
+
+# A circuit breaker: after three failures it stops calling the service,
+# waits, then lets one trial request through.
+scene breaker
+  say "Circuit breaker" speak="After three failures the breaker stops calling the service, waits, then lets one trial through."
+  row gap=110 align=center
+    box #client "Client" w=120 h=64 r=12
+    breaker #cb "Closed"
+    col #svc sides=all r=12 w=120 h=64 gap=4 align=center justify=center anchor=true
+      label "Service" font=sans-500 size=15 color=ink
+      status #health "healthy" tone=good
+  #client -> #cb
+  #cb -> #svc .down
+  send #client to=#svc "req 1" reply="{good:200}"
+  set #health "failing" tone=bad
+  send #client to=#svc "req 2" reply="{bad:500}"
+  set #cb/fails "1"
+  send #client to=#svc "req 3" reply="{bad:500}"
+  set #cb/fails "2"
+  send #client to=#svc "req 4" reply="{bad:500}"
+  set #cb/fails "3"
+  set #cb "Open" tone=bad
+  with dim .down
+  play #cb for=5s
+  with send #client "req 5" reply="{bad:503}" at=+0.4s
+  set #cb "Half-open" tone=warn
+  with rest .down
+  with set #health "healthy" tone=good
+  send #client to=#svc "trial" reply="{good:200}"
+  set #cb "Closed" tone=good
+  with set #cb/fails "0"
+
+# A token bucket: each request spends a token; with none left it is refused.
+scene limiter
+  clear
+  say "Rate limiter" speak="Each request spends a token. When the bucket is empty, the request is refused."
+  row gap=110 align=center
+    box #client2 "Client" w=120 h=64 r=12
+    limiter #rl tokens=3
+    col #api sides=all r=12 w=120 h=64 gap=4 align=center justify=center anchor=true
+      label "API" font=sans-500 size=15 color=ink
+      label #served "served 0"
+  #client2 -> #rl
+  #rl -> #api
+  send #client2 to=#api "req 1" spend=#rl
+  set #served "served 1"
+  send #client2 to=#api "req 2" spend=#rl
+  set #served "served 2"
+  send #client2 to=#api "req 3" spend=#rl
+  set #served "served 3"
+  send #client2 "req 4" reply="{bad:429}"
+  set #rl/tokens "3" for=2.4s
+  send #client2 to=#api "req 5" spend=#rl
+  set #served "served 4"
+
+# A cache: a hit answers from the cache and moves to the top; a miss goes
+# on to the database and is stored at the top, evicting the oldest.
+scene cache
+  clear
+  say "Cache" speak="Recent answers are kept close, so repeat questions skip the database."
+  col gap=36 align=center
+    row gap=100 align=center
+      box #app "App" w=110 h=64 r=12
+      cache #c count=3
+        entry #u9 "user:9" value="Grace"
+        entry #u3 "user:3" value="Ada"
+        entry #u7 "user:7" value="Linus"
+        entry #u2 "user:2" value="Alan"
+      box #db "Database" w=120 h=64 r=12
+    col #read gap=8 align=start w=520
+      label #readout "" color=ink size=15
+      label #note ""
+  #app -> #c
+  #c -> #db
+  send #app "GET user:7" reply="Linus"
+  with set #readout "GET user:7 · {good:Hit}" at=+0.8s
+  with move #u7 first at=+0.6s
+  set #readout "GET user:7 · {good:Hit} · 2 ms from cache"
+  with set #note "Moved user:7 to the top"
+  send #app to=#db "GET user:9" reply="Grace"
+  with set #readout "GET user:9 · {warn:Miss}" at=+0.8s
+  with leave #u2 at=+2.1s
+  with show #u9 at=+0.8s
+  set #readout "GET user:9 · {warn:Miss} · 40 ms from database"
+  with set #note "Stored user:9 · evicted user:2, the oldest"
+  hold 1s

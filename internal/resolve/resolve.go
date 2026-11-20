@@ -601,8 +601,12 @@ func (r *resolver) step(n *script.Node) c.Step {
 				target = &args[i]
 			}
 		}
-		if target == nil || st.Text == "" && !hasQuoted(args) {
-			r.diags.Errorf(n.Pos, `e.g. set #count "4"`, "set needs an element and its new quoted text")
+		_, tone := n.Prop("tone")
+		_, outline := n.Prop("outline")
+		if target != nil && !hasQuoted(args) && (tone || outline) {
+			st.NoText = true // set #b outline=bad changes only a colour
+		} else if target == nil || st.Text == "" && !hasQuoted(args) {
+			r.diags.Errorf(n.Pos, `e.g. set #count "4", or set #s "Open" tone=bad`, "set needs an element and its new quoted text")
 			return st
 		}
 		st.Target = r.parseSel(target.Text, target.Pos)
@@ -941,8 +945,10 @@ func (r *resolver) checkValue(key, val string, pos diag.Pos) {
 		r.oneOf(val, pos, c.States, "state")
 	case "flow":
 		r.oneOf(val, pos, []string{"live", "fixed"}, "flow")
-	case "tone":
-		r.oneOf(val, pos, []string{"bad", "good", "warn", "info", "red", "green", "amber", "yellow", "blue"}, "tone")
+	case "tone", "outline":
+		r.oneOf(val, pos, []string{"bad", "good", "warn", "info", "red", "green", "amber", "yellow", "blue", "none"}, "tone")
+	case "lanes":
+		r.oneOf(val, pos, []string{"1", "2"}, "lane count")
 	case "dir":
 		r.oneOf(val, pos, []string{"row", "col", "LR", "RL", "TD", "TB", "right", "left", "down", "up"}, "direction")
 	case "sides":

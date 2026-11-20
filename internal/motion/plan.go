@@ -102,6 +102,16 @@ type Send struct {
 	Hold        float64
 	Reply, Drop bool
 	Ping, OK    bool
+
+	// Hops are the connectors it travels, Edge the first; Legs time a
+	// send that is more than a dot along one connector (see Leg).
+	Hops      []*c.Element
+	Legs      []Leg
+	Text      string     // shown on a card instead of the dot
+	ReplyText string     // the card's text on the way back (reply=)
+	Spend     *c.Element // a meter it takes one token from (spend=)
+	SpendSlot int        // which of the meter's dots it takes
+	SpendAt   float64    // when the token is on the card
 }
 
 // FlowChange is a child of a live container (`flow=live`) joining its
@@ -176,10 +186,13 @@ type ScenePlan struct {
 	flys       map[*c.Element][]Fly
 	travellers map[*c.Element]bool // elements only seen riding a connector
 	sets       []TextSet
-	endState   map[*c.Element]string // by identity
-	endCam     *c.Element            // identity
-	closeAt    float64               // when exits for the next scene's clear begin; 0 if none
-	stepsEnd   float64               // when the last step finishes
+	tones      map[*c.Element][]ToneSet // colour changes from set … tone=
+	orders     []OrderChange            // move #x first|last
+	lanes      map[*c.Element]bool      // connectors with a reply lane
+	endState   map[*c.Element]string    // by identity
+	endCam     *c.Element               // identity
+	closeAt    float64                  // when exits for the next scene's clear begin; 0 if none
+	stepsEnd   float64                  // when the last step finishes
 }
 
 // Plan is the whole video's timeline.
@@ -251,7 +264,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		marks: map[*c.Element][]Mark{},
 		ptrs:  map[*c.Element][]PointerMove{}, swaps: map[*c.Element][]SwapMove{},
 		plays: map[*c.Element][]PlaySeg{}, flys: map[*c.Element][]Fly{}, travellers: map[*c.Element]bool{},
-		endState: map[*c.Element]string{}}
+		endState: map[*c.Element]string{}, tones: map[*c.Element][]ToneSet{}}
+	meterVal := map[*c.Element]float64{} // meters' values as steps leave them
+	meterAt := func(e *c.Element) float64 {
+		if v, ok := meterVal[e]; ok {
+			return v
+		}
+		return meterNum(e.Text)
+	}
 
 	// carried elements keep their state and the camera keeps its target
 	byIdentity := map[*c.Element]*c.Element{}
@@ -637,15 +657,51 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					snd.Drop, snd.Dur = true, tm.Send
 				}
 			}
-			for _, e := range targets {
-				if edge := edgeFrom(sc, e, to); edge != nil {
-					s := snd
-					s.Edge = edge
-					if _, ends := edge.Edge.Ends(sc.Root); len(ends) > 0 && s.Ping {
-						s.OK = state(ends[0]) != "down"
+			snd.Text = st.Text
+			if v, ok := st.Lookup("reply"); ok {
+				snd.Reply, snd.ReplyText, snd.Dur, snd.Hold = true, v, tm.Send, .4
+			}
+			var spend *c.Element
+			if v, ok := st.Lookup("spend"); ok {
+				if sel, err := selector.ParseSelector(v); err == nil {
+					if ms := c.Select(sc.Root, sel); len(ms) > 0 {
+						spend = firstMeter(ms[0])
 					}
-					sp.sends = append(sp.sends, s)
 				}
+			}
+			legsEnd := start
+			for _, e := range targets {
+				hops := pathFrom(sc, e, to)
+				if len(hops) == 0 {
+					continue
+				}
+				s := snd
+				s.Edge, s.Hops = hops[0], hops
+				if _, ends := hops[0].Edge.Ends(sc.Root); len(ends) > 0 && s.Ping {
+					s.OK = state(ends[0]) != "down"
+				}
+				if spend != nil && meterAt(spend) >= 1 {
+					s.Spend = spend
+				}
+				if s.usesLegs() {
+					d := tm.Send
+					if v, ok := st.Lookup("for"); ok {
+						if f, ok := seconds(v); ok {
+							d = f
+						}
+					}
+					legsEnd = math.Max(legsEnd, s.planLegs(start, d))
+					if s.Spend != nil { // the token leaves the meter as it reaches the card
+						v := meterAt(s.Spend)
+						s.SpendSlot = int(math.Ceil(v-1e-9)) - 1
+						meterVal[s.Spend] = v - 1
+						sp.sets = append(sp.sets, TextSet{El: s.Spend, Text: strconv.FormatFloat(v-1, 'f', -1, 64), Start: s.SpendAt, Dur: .5})
+					}
+				}
+				sp.sends = append(sp.sends, s)
+			}
+			if legsEnd > start {
+				dur = legsEnd - start
 			}
 		case "type":
 			for _, e := range targets {
@@ -682,6 +738,13 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 		case "play":
 			for _, e := range targets {
+				if rings := countdowns(e); len(rings) > 0 {
+					// a ring starts full at every play
+					for _, x := range rings {
+						sp.plays[x] = append(sp.plays[x], PlaySeg{Start: start, Dur: dur, From: 0, To: 1})
+					}
+					continue
+				}
 				from := 0.0
 				if segs := sp.plays[e]; len(segs) > 0 {
 					from = segs[len(segs)-1].To
@@ -693,6 +756,12 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				sp.plays[e] = append(sp.plays[e], PlaySeg{Start: start, Dur: dur, From: from, To: to})
 			}
 		case "move":
+			if len(st.Args) > 0 && (st.Args[0] == "first" || st.Args[0] == "last") {
+				for _, e := range targets {
+					sp.orders = append(sp.orders, OrderChange{El: e, Where: st.Args[0], Start: start, Dur: dur})
+				}
+				break
+			}
 			var dst *c.Element
 			if v, ok := st.Lookup("to"); ok {
 				if sel, err := selector.ParseSelector(v); err == nil {
@@ -808,7 +877,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 			showing = false
 		case "set":
+			sp.planToneSet(st, targets, start, math.Max(dur, .6))
 			for _, e := range targets {
+				if st.NoText {
+					continue
+				}
+				if e.Kind() == "meter" {
+					meterVal[e] = meterNum(st.Text)
+				}
 				sp.sets = append(sp.sets, TextSet{El: e, Text: st.Text, Start: start, Dur: dur})
 				if !c.IsBuiltinKind(e.Kind()) && e.Text != "" {
 					// a component shows its text through parts: set those too
@@ -894,6 +970,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 	for _, e := range later {
 		connect(e, 0)
 	}
+	sp.planLanes()
 	sp.stepsEnd = t
 	sp.Dur = math.Max(t+tm.Hold+hold, captionNeed+0.5)
 	if sc.Duration > 0 {

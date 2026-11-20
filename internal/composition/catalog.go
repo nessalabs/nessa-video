@@ -10,6 +10,7 @@ import "sort"
 var Primitives = []string{
 	"box", "card", "circle", "decision", "store", "stack",
 	"title", "p", "code", "label", "metric", "arrow", "meter", "badge", "timer",
+	"status",
 }
 
 // Layouts arrange their children.
@@ -45,6 +46,8 @@ var Props = []string{
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
 	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "max", "aside", "backdrop", "keep", "from", "layout", "carry", "travel", "context", "speak", "model", "on", "to", "reveal",
+	// system components: lanes, replies, spending, outlines, anchors
+	"lanes", "reply", "spend", "outline", "anchor", "unit", "idle",
 }
 
 // IsVerb reports whether k names a step.
@@ -78,7 +81,7 @@ func contains(xs []string, s string) bool {
 // the ones every element takes (state, enter, exit, hidden, w, h). It is
 // what `reel ref` prints.
 var KindProps = map[string]string{
-	"box":      `"text" r= (corner radius) tone=bad|good|warn|info`,
+	"box":      `"text" r= (corner radius) tone=bad|good|warn|info outline= (tones only the outline; set #b outline=bad changes it smoothly)`,
 	"card":     `"text that wraps" title="header" w= (wrap width) tone=`,
 	"circle":   `"text" r=`,
 	"decision": `"text"`,
@@ -87,9 +90,10 @@ var KindProps = map[string]string{
 	"title":    `"text with ==emphasis=="`,
 	"p":        `"text" (wraps)`,
 	"label":    `"text" color= font= size=`,
-	"meter":    `"3" max=5 kind=slots|bar len= (bar length) tone=; set #m "4" fills or empties it smoothly`,
+	"meter":    `"3" max=5 kind=slots|bar|dots len= (bar length) r= (dot radius) unit="tokens" (a count under it: 3 of 5 tokens) tone=; set #m "4" fills or empties it smoothly, refilled dots grow back`,
+	"status":   `"Closed" tone=good|bad|warn|info; a dot and a label. set #s "Open" tone=bad changes both smoothly; play #s for=4s shows a small countdown ring beside the label`,
 	"badge":    `"leader" tone=; a small tag pinned to the top right corner of the element it is written inside`,
-	"timer":    `"TTL" r=16 tone=; a ring that empties while play #t for=5s runs`,
+	"timer":    `"TTL" r=16 tone= idle=hide (seen only while it runs); a ring that empties while play #t for=5s runs, full again at each play`,
 	"arrow":    `"text above it" dir=right|left|down|up len=40`,
 	"metric":   `"1024" label="what it counts" note="where it comes from" size= tone=bad|good|warn|info`,
 	"code":     `LANG, indented lines or file= lines=; focus= context= (lines kept around focus)`,
@@ -100,8 +104,8 @@ var KindProps = map[string]string{
 	"timeline": `unit=, indented lanes: label | 0-18 text | *18-22 strong`,
 	"mermaid":  `reveal=steps (start empty; walk and show add parts), indented flowchart LR|TD or sequenceDiagram (participant, ->>, -->>, -x, Note, alt/else/opt/loop/par/end, autonumber)`,
 	"math":     `"TeX" size=`,
-	"row":      `gap= align= justify= pad= dir= fit= flow=live (children not shown yet or gone take no room; the rest glide) sides=left,right,bottom (draw those edges)`,
-	"col":      `gap= align= justify= pad= dir= fit= flow=live sides=`,
+	"row":      `gap= align= justify= pad= dir= fit= flow=live (children not shown yet or gone take no room; the rest glide) sides=left,right,bottom (draw those edges; sides=all r=12 a rounded frame) anchor=true (connectors to the component holding it end here)`,
+	"col":      `gap= align= justify= pad= dir= fit= flow=live sides= anchor=true`,
 	"grid":     `cols= gap= flow=live`,
 	"aside":    `layout=left|center|right gap= align=; a column shown only while an isolate step names it (aside=#id): beside the isolated element, or below it with layout=center`,
 	"git":      `indented commands: commit [id], branch NAME, checkout NAME, merge NAME [ff], rebase NAME (Mermaid gitGraph lines work too); play #g reveals them one by one, play #g to=3 up to the third`,

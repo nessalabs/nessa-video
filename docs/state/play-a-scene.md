@@ -12,6 +12,9 @@ sources:
   - internal/layout/layout.go
   - internal/stage/live_test.go
   - internal/stage/stage.go
+  - internal/motion/systems.go
+  - internal/stage/systems.go
+  - internal/stage/systems_test.go
 diagramLinks: {}
 diagramDetails:
   - diagram: 0
@@ -113,6 +116,30 @@ element is down. `fail #s2` puts an element in the down state: a red
 tint and red text, and every connector touching it turns red and dashed;
 `recover #s2` brings it back. Colours change smoothly over the step, and
 a failed element keeps its place, so nothing else moves.
+
+A connector a reply travels draws two hairline lanes, one each side of
+its centre line: the request rides the upper lane and the reply comes
+back on the lower one, so the two never share a line (`lanes=2` or
+`lanes=1` on the connector decides for it). At the far end the packet
+crosses smoothly to the reply lane. `send #client "req 1" reply="{good:200}"`
+sends a card with that text instead of a dot; at the far end its text
+cross-fades to the reply. `send #client to=#svc …` follows connectors
+through whatever sits between, pausing at each element it passes, and
+the reply comes back the same way; a send with `reply=` to the nearest
+element is refused there (a breaker's 503, a limiter's 429). Cards stop
+short of the boxes they join. `send … spend=#rl` takes a token from a
+meter (the first meter in a component): the dot arcs from the meter onto
+the card and the meter drops by one.
+
+`set #s "Open" tone=bad` changes text and tone together, the colour
+blending over the step; `set #b outline=bad` changes only an outline. On
+a component, a text change goes to the parts showing its text and a tone
+change to the parts toned like its first toned part. `play #s for=4s` on
+a `status` light (or a component holding one) shows a small countdown
+ring beside its label; a timer's or status ring starts full at every
+play. `move #e first` (or `last`) moves a child to the front of its
+container among the children on screen; the others glide, and the moving
+one dips as it passes them.
 
 ## Travelling
 

@@ -169,6 +169,22 @@ type Packet struct {
 	Progress, Opacity float64
 	Fail, Good, Fall  float64
 	Ping              bool
+
+	// Lane is which lane of a two-lane connector it rides: -1 the
+	// request lane, 1 the reply lane, between while it turns round.
+	Lane float64
+	// Text is shown on a card instead of the dot; while it changes, Was
+	// is the text going and TextMix how far the change has got.
+	Text, Was string
+	TextMix   float64
+	// Alt is the card's other text (the reply, or the request), so the
+	// card keeps one stopping place for both
+	Alt string
+	// Spend is a meter it takes a token from: SpendFly is 0 before, between
+	// while the token arcs from dot SpendSlot onto the card, 1 once there.
+	Spend     *c.Element
+	SpendSlot int
+	SpendFly  float64
 }
 
 // Packets returns the packets in flight.
@@ -179,7 +195,13 @@ func (m Moment) Packets() []Packet {
 		if t < 0 {
 			continue
 		}
-		pk := Packet{Edge: s.Edge, Ping: s.Ping, Opacity: 1, Carry: s.Carry}
+		if len(s.Legs) > 0 {
+			if pk, ok := s.legPacket(m.T); ok {
+				out = append(out, pk)
+			}
+			continue
+		}
+		pk := Packet{Edge: s.Edge, Ping: s.Ping, Opacity: 1, Carry: s.Carry, Text: s.Text}
 		edge := func(p float64) float64 { return math.Min(1, math.Min(p, 1-p)*8) }
 		switch {
 		case t <= s.Dur:

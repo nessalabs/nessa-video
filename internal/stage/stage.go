@@ -137,7 +137,8 @@ func (s *Stage) Layouts(p *motion.Plan) map[*c.Scene]layout.Result {
 // containers and text, as phases the frame glides through.
 func (s *Stage) liveLayout(sp *motion.ScenePlan) layout.Result {
 	out0, flow, sets := sp.Layouts()
-	if len(flow) == 0 && len(sets) == 0 {
+	orders := sp.Orders()
+	if len(flow) == 0 && len(sets) == 0 && len(orders) == 0 {
 		return s.Layout(sp.Scene)
 	}
 	type change struct {
@@ -153,15 +154,58 @@ func (s *Stage) liveLayout(sp *motion.ScenePlan) layout.Result {
 		t := t
 		chs = append(chs, change{t.Start, t.Dur, func(st *layout.State) { st.Text[t.El] = t.Text }})
 	}
+	for _, o := range orders {
+		o := o
+		chs = append(chs, change{o.Start, o.Dur, func(st *layout.State) {
+			par := o.El.ParentElement()
+			if par == nil {
+				return
+			}
+			kids := st.Order[par]
+			if kids == nil {
+				kids = par.Children
+			}
+			next := []*c.Element{}
+			for _, k := range kids {
+				if k != o.El {
+					next = append(next, k)
+				}
+			}
+			// first or last among the children on screen: one still to
+			// be shown keeps its written place before or after them
+			shown := func(k *c.Element) bool { return k.Edge == nil && !st.Out[k] }
+			at := len(next)
+			if o.Where == "first" {
+				for i, k := range next {
+					if shown(k) {
+						at = i
+						break
+					}
+				}
+			} else {
+				for i := len(next) - 1; i >= 0; i-- {
+					if shown(next[i]) {
+						at = i + 1
+						break
+					}
+				}
+			}
+			next = append(next[:at], append([]*c.Element{o.El}, next[at:]...)...)
+			st.Order[par] = next
+		}})
+	}
 	sort.SliceStable(chs, func(i, j int) bool { return chs[i].start < chs[j].start })
-	cur := layout.State{Out: map[*c.Element]bool{}, Text: map[*c.Element]string{}}
+	cur := layout.State{Out: map[*c.Element]bool{}, Text: map[*c.Element]string{}, Order: map[*c.Element][]*c.Element{}}
 	for e := range out0 {
 		cur.Out[e] = true
 	}
 	copyState := func(st layout.State) layout.State {
-		n := layout.State{Out: map[*c.Element]bool{}, Text: map[*c.Element]string{}}
+		n := layout.State{Out: map[*c.Element]bool{}, Text: map[*c.Element]string{}, Order: map[*c.Element][]*c.Element{}}
 		for k, v := range st.Out {
 			n.Out[k] = v
+		}
+		for k, v := range st.Order {
+			n.Order[k] = v
 		}
 		for k, v := range st.Text {
 			n.Text[k] = v
@@ -536,6 +580,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	ap := p.mo.Look(e)
 	held := opacity // what holds e lets it show this much
 	opacity *= ap.Opacity
+	if f := p.mo.Passing(e); f > 0 { // a child moving past its neighbours dips as it crosses them
+		opacity *= 1 - 0.8*math.Sin(f*math.Pi)
+	}
 	if opacity <= 0.002 {
 		return
 	}
@@ -556,14 +603,16 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	p.draw = ap.Draw
 
 	p.tone = ""
-	if v, ok := e.Computed["tone"]; ok {
-		if t, ok := markup.Tones[strings.ToLower(v.Value)]; ok {
-			// a toned element keeps its state's brightness in the tone's colour
-			p.tone = t
-			tc := p.s.toneCol(t)
-			lk.text = p.s.dimLike(tc, lk.text)
-			lk.line = p.s.dimLike(tc, lk.line)
-		}
+	plain := lk.text // the text colour before any tone
+	if p.mo.Toned(e, "tone") {
+		// a toned element keeps its state's brightness in the tone's
+		// colour; set … tone= changes it smoothly
+		lk.text, p.tone = p.toneOf(e, "tone", lk.text, true)
+		lk.line, _ = p.toneOf(e, "tone", lk.line, true)
+	}
+	if p.mo.Toned(e, "outline") {
+		// outline= tones only the outline, at full strength unless dimmed
+		lk.line, _ = p.toneOf(e, "outline", lk.line, state == "dim")
 	}
 	textColor := lk.text
 	if v, ok := e.Computed["color"]; ok && state == "rest" {
@@ -585,7 +634,11 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		p.treeLink(e, r, lk, held, ap)
 		p.tableParts(e, r, lk, state)
 		if v, ok := e.Computed["sides"]; ok {
-			p.stroke(sidesPath(r, v.Value), lk.line, lk.dash)
+			if rad := numProp(e, "r", 0); v.Value == "all" && rad > 0 {
+				p.stroke(rr(r, rad), lk.line, lk.dash) // a rounded frame
+			} else {
+				p.stroke(sidesPath(r, v.Value), lk.line, lk.dash)
+			}
 		}
 	}
 	switch {
@@ -600,6 +653,8 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		p.badge(e, r, lk)
 	case kind == "timer":
 		p.timer(e, r, lk)
+	case kind == "status":
+		p.status(e, r, lk, plain)
 	case e.Array != nil:
 		p.arrayBlock(e, r, lk, ap)
 	case e.Chart != nil:
@@ -798,15 +853,16 @@ func (p *painter) route(sc *c.Scene, e *c.Element) [][2]float64 {
 	if len(fromEls) == 0 || len(toEls) == 0 {
 		return nil
 	}
-	a, okA := p.lay.Boxes[fromEls[0]]
-	b, okB := p.lay.Boxes[toEls[0]]
+	fa, ta := anchorOf(fromEls[0]), anchorOf(toEls[0])
+	a, okA := p.lay.Boxes[fa]
+	b, okB := p.lay.Boxes[ta]
 	if !okA || !okB {
 		return nil
 	}
-	if pts := p.detour(fromEls[0], toEls[0], a, b); pts != nil {
+	if pts := p.detour(fa, ta, a, b); pts != nil {
 		return pts
 	}
-	return orthogonal(fromEls[0].Kind(), toEls[0].Kind(), a, b)
+	return orthogonal(fa.Kind(), ta.Kind(), a, b)
 }
 
 // pointed kinds meet a connector only at the tips on their centre lines.
@@ -923,20 +979,25 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 	p.opacity = ap.Opacity
 	p.draw = ap.Draw
 
-	var d strings.Builder
-	for i, pt := range pts {
-		if i == 0 {
-			fmt.Fprintf(&d, "M%g %g", pt[0], pt[1])
-		} else {
-			fmt.Fprintf(&d, "L%g %g", pt[0], pt[1])
+	lanes := p.mo.Lanes(e)
+	if lanes {
+		// requests ride the upper lane, replies come back on the lower one
+		up, down := offsetPath(pts, -LaneOffset), reversed(offsetPath(pts, LaneOffset))
+		p.stroke(polyline(up), cl, dashed)
+		p.stroke(polyline(down), cl, dashed)
+		p.draw = 1
+		if head && ap.Draw >= 0.98 {
+			p.chevron(up[len(up)-2], up[len(up)-1], cl)
+			p.chevron(down[len(down)-2], down[len(down)-1], cl)
 		}
-	}
-	p.stroke(d.String(), cl, dashed)
-	p.draw = 1
-	if head && ap.Draw >= 0.98 {
-		p.chevron(pts[len(pts)-2], pts[len(pts)-1], cl)
-		if e.Edge.Op == "<->" {
-			p.chevron(pts[1], pts[0], cl)
+	} else {
+		p.stroke(polyline(pts), cl, dashed)
+		p.draw = 1
+		if head && ap.Draw >= 0.98 {
+			p.chevron(pts[len(pts)-2], pts[len(pts)-1], cl)
+			if e.Edge.Op == "<->" {
+				p.chevron(pts[1], pts[0], cl)
+			}
 		}
 	}
 	if e.Text != "" {
@@ -964,10 +1025,14 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 		}
 		mx, my := (pts[best][0]+pts[best+1][0])/2, (pts[best][1]+pts[best+1][1])/2
 		t := p.opt.Type["label"]
+		off := 0.0
+		if lanes {
+			off = LaneOffset
+		}
 		if pts[best][1] == pts[best+1][1] {
-			p.runs(e.Text, mx, my-10, t, p.s.col("ink"), p.s.col("hi"), render.Middle)
+			p.runs(e.Text, mx, my-10-off, t, p.s.col("ink"), p.s.col("hi"), render.Middle)
 		} else {
-			p.runs(e.Text, mx+10, my+4, t, p.s.col("ink"), p.s.col("hi"), render.Start)
+			p.runs(e.Text, mx+10+off, my+4, t, p.s.col("ink"), p.s.col("hi"), render.Start)
 		}
 	}
 }
@@ -977,6 +1042,30 @@ func (p *painter) packet(sc *c.Scene, pk motion.Packet) {
 	pts := p.route(sc, pk.Edge)
 	if pts == nil {
 		return
+	}
+	if p.mo.Lanes(pk.Edge) {
+		// on a two-lane connector: between the lanes while it turns round
+		lane := pk.Lane
+		if lane == 0 {
+			lane = -1
+		}
+		pts = offsetPath(pts, lane*LaneOffset)
+	}
+	if pk.Text != "" && pk.Carry == nil {
+		h := p.cardHalf(pk) + 8
+		x, y := pointAt(trimPath(pts, h, h), pk.Progress)
+		p.m = p.view
+		p.opacity = pk.Opacity * p.dimAll
+		y += pk.Fall
+		p.card(pk, x, y)
+		p.opacity = p.dimAll
+		p.token(pk, x, y)
+		return
+	}
+	if pk.Spend != nil && pk.SpendFly > 0 && pk.SpendFly < 1 {
+		x, y := pointAt(pts, pk.Progress)
+		p.m, p.opacity = p.view, p.dimAll
+		p.token(pk, x, y)
 	}
 	var total float64
 	for i := 0; i+1 < len(pts); i++ {
@@ -1593,6 +1682,10 @@ func (p *painter) meter(e *c.Element, r layout.Rect, lk look) {
 	n := math.Max(1, numProp(e, "max", 5))
 	on, off := lk.text, p.s.col("line-0")
 	p.draw = 1
+	if str(e, "kind") == "dots" {
+		p.dots(e, r, on, v)
+		return
+	}
 	if str(e, "kind") == "bar" {
 		p.fill(rr(r, r.H/2), off)
 		f := math.Max(0, math.Min(1, v/n))
@@ -1626,8 +1719,16 @@ func (p *painter) timer(e *c.Element, r layout.Rect, lk look) {
 	rad := r.H / 2
 	cx, cy := r.X+rad, r.Y+rad
 	left := 1.0
-	if pos, ok := p.mo.Playhead(e); ok {
-		left = 1 - pos
+	l, op, ok := p.mo.Countdown(e)
+	if ok {
+		left = l
+	}
+	if str(e, "idle") == "hide" {
+		// seen only while it runs
+		if !ok || op <= 0 {
+			return
+		}
+		p.opacity *= op
 	}
 	p.draw = 1
 	p.stroke(circle(cx, cy, rad-1), p.s.col("line-0"), false)

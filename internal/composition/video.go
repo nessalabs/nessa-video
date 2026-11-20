@@ -49,6 +49,9 @@ type Step struct {
 	Decls  []Decl
 	With   bool // starts together with the previous step
 	Pos    diag.Pos
+	// NoText marks a set step that changes only properties (tone=,
+	// outline=), not the element's text.
+	NoText bool
 
 	// Speech is the narration length in seconds for a say step, filled in
 	// once the voice has spoken it; 0 means it is estimated from the words.

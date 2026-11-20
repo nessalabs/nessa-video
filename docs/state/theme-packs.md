@@ -62,6 +62,14 @@ define server units=3     # components built from primitives
   pile-of-copies shape), `bucket` (an index and its chain)
   and `balancer` (a load balancer joined to every server in its pool). A
   pack can define its own the same way.
+- **System components** sit on `status` (a toned dot and label with an
+  inline countdown ring), dot meters (`meter kind=dots unit="tokens"`),
+  `outline=`, rounded frames (`sides=all r=12`) and `anchor=true` (the
+  part connectors to the component meet). Hairline defines `breaker`
+  (`breaker #cb "Closed"`: state above, failure dots below),
+  `limiter` (`limiter #rl tokens=6`: token dots and a count) and `cache`
+  (`cache #c count=3` holding `entry #u3 "user:3" value="Ada"` rows, the
+  newest first).
 
 ```reel
 list #l
