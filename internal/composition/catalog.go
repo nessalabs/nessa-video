@@ -16,7 +16,7 @@ var Primitives = []string{
 var Layouts = []string{"row", "col", "grid", "table", "tree", "aside", "layer", "place"}
 
 // Blocks are content with their own input format.
-var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid", "math"}
+var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid", "math", "git"}
 
 // Verbs are steps. They change what is on screen over time.
 var Verbs = []string{
@@ -24,7 +24,7 @@ var Verbs = []string{
 	"leave", "clear", // exits
 	"fail", "recover", // the down state
 	"isolate", "return", // sub-scenes
-	"camera", "send", "ping", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
+	"camera", "send", "ping", "move", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
 	"say", "wait", "hold",
 }
 
@@ -44,7 +44,7 @@ var Props = []string{
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
-	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "max", "aside", "backdrop", "keep", "from", "layout", "context", "speak", "model", "on", "to", "reveal",
+	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "max", "aside", "backdrop", "keep", "from", "layout", "carry", "travel", "context", "speak", "model", "on", "to", "reveal",
 }
 
 // IsVerb reports whether k names a step.
@@ -104,6 +104,7 @@ var KindProps = map[string]string{
 	"col":      `gap= align= justify= pad= dir= fit= flow=live sides=`,
 	"grid":     `cols= gap= flow=live`,
 	"aside":    `layout=left|center|right gap= align=; a column shown only while an isolate step names it (aside=#id): beside the isolated element, or below it with layout=center`,
+	"git":      `indented commands: commit [id], branch NAME, checkout NAME, merge NAME [ff], rebase NAME (Mermaid gitGraph lines work too); play #g reveals them one by one, play #g to=3 up to the third`,
 	"tree":     `kind=binary gap= rank= (level height); each child is a node, a node's children its children in the tree; nodes never move when one is shown; side=right puts a lone child of a binary node on the right`,
 	"table":    `flow=live (default); each child is a row, its children the cells; columns line up and rules part the rows`,
 	"layer":    `(children stacked)`,

@@ -114,6 +114,11 @@ for a chart, timeline or terminal; a timeline that shows order only takes
 - For services, show load with `meter`, requests with `send ... reply`,
   health checks with `ping`, and failures with `fail`/`recover`; keep a
   failed element where it is rather than removing it.
+- For branching, merging and rebasing use a `git` block and `play` it as
+  you talk: `play #g to=3 on="branch"`, then `play #g to=6`.
+- Anything can travel: `move #job to=#worker` takes any element to
+  another's place, and `send #client to=#api carry=#req reply` carries a
+  request card along the line and back. Prefer these to inventing dots.
 - To explain one part in depth, `isolate` it with an `aside` holding the
   explanation, then `return` to the whole picture. Use `show #x from=#y`
   so values visibly come from the scene.

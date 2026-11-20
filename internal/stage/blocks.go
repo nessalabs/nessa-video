@@ -494,3 +494,192 @@ func (p *painter) sequenceBlock(e *c.Element, r layout.Rect, lk look, ap motion.
 }
 
 func clamp01(x float64) float64 { return math.Max(0, math.Min(1, x)) }
+
+// gitBlock draws a git history between two of its states: the one after
+// the commands played so far and the next, so commits draw in, rebased
+// copies glide to their new place while the old ones fade, branch labels
+// slide to their new heads, and a fast-forward recolours commits as they
+// join their new lane.
+func (p *painter) gitBlock(e *c.Element, r layout.Rect, ap motion.Appearance) {
+	states := e.Git.States()
+	n := len(e.Git.Cmds)
+	shown := float64(n)
+	if pos, ok := p.mo.Playhead(e); ok {
+		shown = pos * float64(n)
+	} else if _, pending := p.mo.HasPlay(e); pending {
+		shown = 0
+	}
+	k := int(math.Floor(shown + 1e-9))
+	frac := shown - float64(k)
+	if k >= n {
+		k, frac = n, 0
+	}
+	a, b := states[k], states[min(k+1, n)]
+	f := motion.Ease(frac)
+	if k == n {
+		f = 1
+	}
+	base := p.opacity
+	palette := []color.NRGBA{p.s.toneCol("info"), p.s.col("#A78BFA"), p.s.toneCol("good"), p.s.toneCol("warn"), p.s.col("#F08AB8")}
+	laneCol := func(i int) color.NRGBA { return palette[i%len(palette)] }
+	// centre the widest the history gets in the block's box
+	cols := 0
+	for _, st := range states {
+		for _, cm := range st.Commits {
+			cols = max(cols, cm.Col+1)
+		}
+	}
+	x0 := r.CX() - float64(max(cols-1, 0))*layout.GitCol/2
+	at := func(cm *c.GitCommit) (float64, float64) {
+		return x0 + float64(cm.Col)*layout.GitCol, r.Y + layout.GitTop + float64(cm.Lane)*layout.GitLane
+	}
+	type drawn struct {
+		x, y, appear, alpha float64
+		col                 color.NRGBA
+		cm                  *c.GitCommit
+	}
+	pos := map[string]*drawn{}
+	var order []*drawn
+	for _, cb := range b.Commits {
+		bx, by := at(cb)
+		d := &drawn{x: bx, y: by, appear: 1, alpha: 1, col: laneCol(cb.Lane), cm: cb}
+		ghost := func(g bool) float64 {
+			if g {
+				return .3
+			}
+			return 1
+		}
+		if ca := a.Find(cb.ID); ca != nil {
+			ax, ay := at(ca)
+			d.x, d.y = ax+(bx-ax)*f, ay+(by-ay)*f
+			d.col = lerpColor(laneCol(ca.Lane), laneCol(cb.Lane), f)
+			d.alpha = ghost(ca.Ghost) + (ghost(cb.Ghost)-ghost(ca.Ghost))*f
+		} else {
+			d.appear = f
+			d.alpha = ghost(cb.Ghost)
+		}
+		pos[cb.ID] = d
+		order = append(order, d)
+	}
+	for _, ca := range a.Commits {
+		if _, ok := pos[ca.ID]; !ok { // a ghost leaving
+			ax, ay := at(ca)
+			d := &drawn{x: ax, y: ay, appear: 1, alpha: .3 * (1 - f), col: laneCol(ca.Lane), cm: ca}
+			pos[ca.ID] = d
+			order = append(order, d)
+		}
+	}
+	// links first, under the dots
+	for _, d := range order {
+		for i, pid := range d.cm.Parents {
+			pd, ok := pos[pid]
+			if !ok {
+				continue
+			}
+			cl := d.col
+			if i == 1 || pd.cm.Lane > d.cm.Lane {
+				cl = pd.col // a line coming up into a lane keeps its branch's colour
+			}
+			var path string
+			if math.Abs(pd.y-d.y) < .5 {
+				path = fmt.Sprintf("M%g %gL%g %g", pd.x, pd.y, d.x, d.y)
+			} else {
+				mx := (pd.x + d.x) / 2
+				path = fmt.Sprintf("M%g %gC%g %g %g %g %g %g", pd.x, pd.y, mx, pd.y, mx, d.y, d.x, d.y)
+			}
+			p.opacity = base * math.Min(d.alpha, pd.alpha)
+			p.draw = math.Min(1, d.appear*1.6)
+			p.strokeW(path, cl, d.cm.Ghost, 2.6)
+		}
+	}
+	lab := p.opt.Type["label"]
+	p.draw = 1
+	for _, d := range order {
+		s := 1.0
+		if d.appear < 1 {
+			s = outBack(math.Max(0, (d.appear-.35)/.65))
+		}
+		if s <= 0.01 {
+			continue
+		}
+		p.opacity = base * d.alpha
+		if d.cm.Merge && len(d.cm.Parents) > 1 {
+			if pd, ok := pos[d.cm.Parents[1]]; ok {
+				p.strokeW(circle(d.x, d.y, 16*s), pd.col, false, 2.4)
+			}
+		}
+		p.fill(circle(d.x, d.y, 13*s), p.s.col("bg"))
+		p.fill(circle(d.x, d.y, 10*s), d.col)
+		p.opacity = base * d.alpha * math.Min(1, s)
+		p.runs(d.cm.ID, d.x, d.y+36, lab, p.s.col("ink-dim"), p.s.col("hi"), render.Middle)
+	}
+	// branch labels, side by side when they point at the same commit
+	headAt := func(st c.GitState, br string) *drawn {
+		if id, ok := st.Heads[br]; ok {
+			return pos[id]
+		}
+		return nil
+	}
+	type tag struct {
+		name             string
+		x, y, w, alpha   float64
+		col              color.NRGBA
+		current, hasHead bool
+	}
+	groups := map[string][]*tag{}
+	var gkeys []string
+	for li, br := range b.Lanes {
+		db := headAt(b, br)
+		if db == nil {
+			continue
+		}
+		t := &tag{name: br, x: db.x, y: db.y, alpha: 1, col: laneCol(li), current: br == b.Current}
+		if da := headAt(a, br); da != nil {
+			t.x, t.y = da.x+(db.x-da.x)*f, da.y+(db.y-da.y)*f
+		} else {
+			t.alpha = f
+		}
+		t.w = p.s.Measure.Measure(br, lab.Font, lab.Size) + 18
+		key := b.Heads[br]
+		if _, ok := groups[key]; !ok {
+			gkeys = append(gkeys, key)
+		}
+		groups[key] = append(groups[key], t)
+	}
+	for _, key := range gkeys {
+		ts := groups[key]
+		total := -6.0
+		for _, t := range ts {
+			total += t.w + 6
+		}
+		off := -total / 2
+		for _, t := range ts {
+			cx, cy := t.x+off+t.w/2, t.y-36
+			off += t.w + 6
+			box := layout.Rect{X: cx - t.w/2, Y: cy - 10, W: t.w, H: 20}
+			p.opacity = base * t.alpha
+			p.fill(rr(box, 10), p.s.col("bg"))
+			p.strokeW(rr(box, 10), t.col, false, 1.2)
+			p.runs(t.name, cx, cy+lab.Size*.36, lab, t.col, t.col, render.Middle)
+		}
+	}
+	// the command being run
+	line := ""
+	if k < n && frac > 0 {
+		line = e.Git.Cmds[k].Line
+	} else if k > 0 {
+		line = e.Git.Cmds[k-1].Line
+	}
+	if line != "" {
+		code := p.opt.Type["code"]
+		code.Size = 15
+		p.opacity = base
+		p.runs("$ "+line, x0-10, r.Bottom()-10, code, p.s.col("ink-dim"), p.s.col("hi"), render.Start)
+	}
+	p.opacity = base
+}
+
+func outBack(f float64) float64 {
+	f = math.Max(0, math.Min(1, f))
+	return 1 + 2.2*math.Pow(f-1, 3) + 1.2*math.Pow(f-1, 2)
+}

@@ -724,7 +724,7 @@ func (r *resolver) element(parent *c.Element, n *script.Node, inst *instance) {
 	switch n.Kind {
 	case "code", "diff":
 		r.codeBlock(e, n)
-	case "array", "chart", "timeline", "mermaid", "math":
+	case "array", "chart", "timeline", "mermaid", "math", "git":
 		r.block(e, n)
 	}
 	parent.Append(e)

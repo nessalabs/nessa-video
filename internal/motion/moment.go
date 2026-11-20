@@ -165,6 +165,7 @@ func (m Moment) Caption() (string, float64) {
 // below the line once it is refused; Ping makes it a smaller dot.
 type Packet struct {
 	Edge              *c.Element
+	Carry             *c.Element // drawn instead of the dot
 	Progress, Opacity float64
 	Fail, Good, Fall  float64
 	Ping              bool
@@ -178,7 +179,7 @@ func (m Moment) Packets() []Packet {
 		if t < 0 {
 			continue
 		}
-		pk := Packet{Edge: s.Edge, Ping: s.Ping, Opacity: 1}
+		pk := Packet{Edge: s.Edge, Ping: s.Ping, Opacity: 1, Carry: s.Carry}
 		edge := func(p float64) float64 { return math.Min(1, math.Min(p, 1-p)*8) }
 		switch {
 		case t <= s.Dur:
@@ -424,32 +425,48 @@ func (m Moment) Isolation() (*Isolation, float64) {
 	return nil, 0
 }
 
-// Flying returns the elements flying between their place and another's
-// at this moment, with how far they are towards the other (1 there, 0 in
-// their own place).
+// Flying returns the elements away from their own place at this moment:
+// each is between A and B (nil is its own place), W of the way to B.
 func (m Moment) Flying() map[*c.Element]FlyAt {
 	var out map[*c.Element]FlyAt
 	for e, fl := range m.plan.flys {
+		var cur *FlyAt
 		for _, f := range fl {
-			if m.T < f.Start || m.T > f.Start+f.Dur {
-				continue
+			if m.T < f.Start {
+				break
 			}
 			p := Ease(clamp((m.T - f.Start) / f.Dur))
-			w := 1 - p
-			if f.Out {
-				w = p
+			switch {
+			case f.Stay:
+				cur = &FlyAt{A: f.From, B: f.Src, W: p}
+			case m.T > f.Start+f.Dur:
+				cur = nil // arrived home, or gone
+			case f.Out:
+				cur = &FlyAt{B: f.Src, W: p, Resize: true}
+			default:
+				cur = &FlyAt{A: f.Src, W: p, Resize: true}
 			}
-			if out == nil {
-				out = map[*c.Element]FlyAt{}
-			}
-			out[e] = FlyAt{Src: f.Src, W: w}
 		}
+		if cur == nil || cur.A == nil && cur.B == nil || cur.B == nil && cur.W >= 1 {
+			continue
+		}
+		if out == nil {
+			out = map[*c.Element]FlyAt{}
+		}
+		out[e] = *cur
 	}
 	return out
 }
 
-// FlyAt is a flying element's other place and how near to it it is.
+// FlyAt places a travelling element W of the way from A's place to B's
+// (nil is its own place). Resize grows or shrinks it to the size of the
+// place it is at; otherwise it keeps its own size.
 type FlyAt struct {
-	Src *c.Element
-	W   float64
+	A, B   *c.Element
+	W      float64
+	Resize bool
 }
+
+// Travellers are the elements send steps carry along connectors in
+// place of a dot; they are seen only while they ride.
+func (m Moment) Travellers() map[*c.Element]bool { return m.plan.travellers }

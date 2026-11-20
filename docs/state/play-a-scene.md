@@ -114,6 +114,32 @@ tint and red text, and every connector touching it turns red and dashed;
 `recover #s2` brings it back. Colours change smoothly over the step, and
 a failed element keeps its place, so nothing else moves.
 
+## Travelling
+
+Any element can travel, not just the send dot. `move #job to=#w1` takes
+it from where it is to `#w1`'s place over the camera time and leaves it
+there; `move #job to=#w2` continues from `#w1`, and `move #job` brings it
+home. `send #client to=#api carry=#req` carries `#req` along the
+connector in place of the dot, with `reply` bringing it back; an element
+written with `travel=true` takes no room in the layout and is seen only
+while something carries it. `show #c from=#n` and `leave #c to=#n` fly an
+element out of, or into, another as it appears or goes, growing or
+shrinking to the size of the place it is at.
+
+## Git histories
+
+A `git` block draws a history from commands, one per line: `commit`,
+`branch` (or `switch -c`), `checkout`, `merge` (`ff` to fast-forward) and
+`rebase`. Each branch has its own lane and colour, commits sit in
+columns after their parents, and branch labels sit over their heads, side
+by side when two share a commit. `play #g` runs the commands one at a
+time: a commit's line draws in and its dot pops in, a branch label
+slides to its new head, a merge commit is ringed in the merged branch's
+colour, a rebase leaves dashed copies of the old commits that fade while
+the new ones appear on top of the other branch, and a fast-forward
+brings commits onto the branch's lane, changing colour as they move. The
+command being run shows under the graph.
+
 ## Isolating one element
 
 `isolate #n30 aside=#why` lifts one element out of the scene into a

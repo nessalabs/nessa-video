@@ -65,6 +65,7 @@ side by default), so it stays readable; folded runs show as "N lines".
 | `timeline unit=ms` | indented lanes: `label | 0-18 wait | *18-22 done` (`*` = bright) |
 | `mermaid` | indented `flowchart LR`/`TD` (nodes become parts `#flow/ID`) or `sequenceDiagram` with `participant … as …`, `->>`, `-->>` (reply), `-x`, `Note over A: …`, `alt`/`else`/`opt`/`loop`/`par` … `end`, `autonumber` |
 | `math "TeX"` | formula |
+| `git` | indented commands, one per line: `commit a1`, `branch feature` (or `switch -c feature`), `checkout main`, `merge feature` (`merge feature ff` fast-forwards), `rebase main`; Mermaid `gitGraph` lines work too. Each branch gets its own lane and colour; `play #g` runs the commands one by one, `play #g to=4` up to the fourth |
 
 Elements stay on screen into the next scene unless the scene starts with
 `clear` (or `clear keep=#id`). Ids must be unique within what is on screen.
@@ -87,6 +88,8 @@ Steps run one after another after the scene's elements have entered.
 | `fail SELECTOR` / `recover SELECTOR` | put an element in the down state (red tint, red text; connectors to it turn red and dashed) and back; colours change smoothly |
 | `isolate SELECTOR aside=#why backdrop=dim` | lift one element out of the scene: it grows and moves to the spotlight while the rest dims (`backdrop=hide` hides it); a dashed outline marks where it was, and the aside comes in beside it. Steps that follow can show things in the aside |
 | `return SELECTOR` | end the isolation: the aside leaves (each part with its own `exit=`; `keep=true` parts stay; `order=together` or `order=cut`), and the element glides back |
+| `move SELECTOR to=#y` | any element travels to `#y`'s place and stays; `move #x to=#z` continues from there, `move #x` goes home |
+| `send … carry=#req` | any element rides the connector instead of the dot (and comes back with `reply`); give it `travel=true` so it takes no room and is seen only while it rides |
 | `show SELECTOR from=#src` | the element flies out of `#src` as it appears (a value copied out of a tree into a list); it flies back on `return`. `leave #x to=#y` flies to `#y` as it goes |
 | `set SELECTOR "text"` | change an element's text in place (a counter, a value), cross-fading; `set #n "4"` on a `node` changes its value |
 | `type SELECTOR` | type out a terminal, code or text block |

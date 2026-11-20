@@ -258,9 +258,8 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 	}
 	// elements flying between two places
 	for e, fl := range m.Flying() {
-		own, ok1 := lay.Boxes[e]
-		src, ok2 := lay.Boxes[fl.Src]
-		if !ok1 || !ok2 || own.W <= 0 {
+		own, ok := lay.Boxes[e]
+		if !ok || own.W <= 0 {
 			continue
 		}
 		ov := p.view
@@ -268,10 +267,22 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 			ov = base
 		}
 		ox, oy := apply(ov, own.CX(), own.CY())
-		sx, sy := apply(p.view, src.CX(), src.CY())
-		k0 := (src.W * p.view.Scale()) / (own.W * ov.Scale())
-		k := 1 + (k0-1)*fl.W
-		g := render.Translate(ox+(sx-ox)*fl.W, oy+(sy-oy)*fl.W).Mul(render.Affine{k, 0, 0, k, 0, 0}).Mul(render.Translate(-ox, -oy))
+		// where an end is, in frame pixels, and how big e should be there
+		end := func(x *c.Element) (float64, float64, float64) {
+			if b, ok := lay.Boxes[x]; ok && x != nil {
+				ex, ey := apply(p.view, b.CX(), b.CY())
+				k := 1.0
+				if fl.Resize {
+					k = (b.W * p.view.Scale()) / (own.W * ov.Scale())
+				}
+				return ex, ey, k
+			}
+			return ox, oy, 1
+		}
+		ax, ay, ak := end(fl.A)
+		bx, by, bk := end(fl.B)
+		k := ak + (bk-ak)*fl.W
+		g := render.Translate(ax+(bx-ax)*fl.W, ay+(by-ay)*fl.W).Mul(render.Affine{k, 0, 0, k, 0, 0}).Mul(render.Translate(-ox, -oy))
 		if p.glide == nil {
 			p.glide = map[*c.Element]render.Affine{}
 		}
@@ -344,6 +355,7 @@ type painter struct {
 	iso          *c.Element // the isolated element, drawn after the rest
 	drawingIso   bool
 	drawingAside bool
+	drawingCarry bool
 	dimAll       float64 // how much the backdrop shows while something is isolated
 }
 
@@ -503,6 +515,9 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	if e.Kind() == "aside" && !p.drawingAside {
 		return
 	}
+	if p.mo.Travellers()[e] && !p.drawingCarry {
+		return // seen only while it rides a connector
+	}
 	if e == p.iso && !p.drawingIso {
 		// drawn later in the spotlight; a tree node leaves its children here
 		if layout.TreeOf(e) != nil {
@@ -556,7 +571,7 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	}
 
 	// dim fades a block's contents too, not only its outline
-	if e.Code != nil || e.Array != nil || e.Chart != nil || e.Timeline != nil || e.Sequence != nil || kind == "math" {
+	if e.Code != nil || e.Array != nil || e.Chart != nil || e.Timeline != nil || e.Sequence != nil || e.Git != nil || kind == "math" {
 		dimness := 0.0
 		if eff(ap.State) == "dim" {
 			dimness += ap.Mix
@@ -591,12 +606,14 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		p.chartBlock(e, r, lk, ap)
 	case e.Timeline != nil:
 		p.timelineBlock(e, r, lk, ap)
+	case e.Git != nil:
+		p.gitBlock(e, r, ap)
 	case e.Sequence != nil:
 		p.sequenceBlock(e, r, lk, ap)
 	case kind == "math":
 		p.mathBlock(e, r, textColor, ap)
 	}
-	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && e.Sequence == nil && kind != "math" {
+	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && e.Sequence == nil && e.Git == nil && kind != "math" {
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
 			p.shape(e, r, lk, ap)
@@ -977,6 +994,20 @@ func (p *painter) packet(sc *c.Scene, pk motion.Packet) {
 			y := pts[i][1] + (pts[i+1][1]-pts[i][1])*f
 			p.m = p.view
 			p.opacity = pk.Opacity * p.dimAll
+			if b, ok := p.lay.Boxes[pk.Carry]; ok && pk.Carry != nil {
+				// any element can ride the line: centre it on the point
+				fx, fy := apply(p.view, x, y+pk.Fall)
+				ox, oy := apply(p.view, b.CX(), b.CY())
+				saved := p.view
+				p.view = render.Translate(fx-ox, fy-oy).Mul(saved)
+				p.m, p.draw = p.view, 1
+				p.fill(rr(b, 8), p.s.col("bg"))
+				p.drawingCarry = true
+				p.element(pk.Carry, "rest", pk.Opacity*p.dimAll, 0)
+				p.drawingCarry = false
+				p.view = saved
+				return
+			}
 			cl, rad := p.s.col("hi"), 4.0
 			if pk.Ping {
 				cl, rad = p.s.col("ink-dim"), 3.5
@@ -1675,4 +1706,17 @@ func (p *painter) isolated(iso *motion.Isolation, f float64, backView, plainView
 	p.drawingIso, p.dimAll = true, 1
 	p.element(e, "rest", held, 0)
 	p.drawingIso = false
+}
+
+// strokeW is stroke with a line width of its own.
+func (p *painter) strokeW(d string, cl color.NRGBA, dash bool, w float64) {
+	cl = alpha(cl, p.opacity)
+	if cl.A == 0 || p.draw <= 0 {
+		return
+	}
+	op := render.Op{Kind: render.PathOp, M: p.m, D: d, Stroke: cl, StrokeW: w, Draw: p.draw}
+	if dash {
+		op.Dash = []float64{4, 5}
+	}
+	p.l.Ops = append(p.l.Ops, op)
 }

@@ -32,6 +32,7 @@ type Element struct {
 	Chart    *ChartBlock
 	Timeline *TimelineBlock
 	Sequence *SequenceBlock
+	Git      *GitBlock
 
 	parent   *Element
 	owner    *Element // component instance that owns this part

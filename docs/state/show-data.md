@@ -133,3 +133,7 @@ outlines, so they take theme colours and fade like text. Backslashes on a
 ## Known gaps
 
 - The maths engine adds about 7 MB to the binary.
+
+## Git histories
+
+`git` blocks are described in [Play a scene](play-a-scene.md#git-histories).

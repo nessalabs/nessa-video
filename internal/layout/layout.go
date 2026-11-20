@@ -182,6 +182,11 @@ func (e *engine) finish(root *c.Element, area Rect, w, h, fit float64) Result {
 	// an aside takes no room in the scene: it is placed in the part of the
 	// frame its isolated element leaves free
 	root.Walk(func(a *c.Element) {
+		if str(a, "travel", "") == "true" { // rides connectors; needs only a size
+			w, h := e.measure(a)
+			e.place(a, Rect{area.CX() - w/2, area.CY() - h/2, w, h})
+			return
+		}
 		if a.Kind() != "aside" {
 			return
 		}
@@ -522,7 +527,7 @@ func Plain(s string) string {
 var textKinds = map[string]bool{"title": true, "p": true, "label": true, "metric": true, "code": true}
 
 func (e *engine) inFlow(el *c.Element) bool {
-	return el.Kind() != "edge" && el.Kind() != "use" && el.Kind() != "badge" && el.Kind() != "aside" && str(el, "hidden", "false") != "true" && !e.st.Out[el]
+	return el.Kind() != "edge" && el.Kind() != "use" && el.Kind() != "badge" && el.Kind() != "aside" && str(el, "travel", "") != "true" && str(el, "hidden", "false") != "true" && !e.st.Out[el]
 }
 
 // textOf is an element's text, as a `set` step may have changed it.
@@ -636,6 +641,16 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 			}
 		}
 		return e.opt.BlockSize[0], 80
+	case el.Git != nil:
+		states := el.Git.States()
+		cols, lanes := 0, 1
+		for _, st := range states {
+			lanes = max(lanes, len(st.Lanes))
+			for _, cm := range st.Commits {
+				cols = max(cols, cm.Col+1)
+			}
+		}
+		return GitPad*2 + float64(max(cols-1, 0))*GitCol, GitTop + float64(lanes-1)*GitLane + GitBottom
 	case el.Sequence != nil:
 		h := SeqHead + 28
 		for _, it := range el.Sequence.Items {
@@ -1407,3 +1422,6 @@ func AsideRegion(area Rect, layout string) Rect {
 	}
 	return Rect{area.X + area.W*0.48, area.Y, area.W * 0.52, area.H}
 }
+
+// Git history geometry: space between commits, between lanes, and around.
+const GitCol, GitLane, GitPad, GitTop, GitBottom = 124.0, 100.0, 64.0, 66.0, 84.0

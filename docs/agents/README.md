@@ -97,7 +97,7 @@ To check how a moment looks, render and pull frames with ffmpeg
 | `examples` | sample scripts |
 
 New building blocks go in as engine primitives that are generic
-(`flow=live`, `set`, `table`, `tree`, `meter`, `badge`, `timer`, `sides=`, `arrow`, connector fan-out, `send … reply|drop`, `ping`, `fail`/`recover`, `isolate`/`return`, `show … from=`), with
+(`flow=live`, `set`, `table`, `tree`, `meter`, `badge`, `timer`, `sides=`, `arrow`, connector fan-out, `send … reply|drop`, `ping`, `fail`/`recover`, `isolate`/`return`, `show … from=`, `move`, `send … carry=`, `git`), with
 everyday structures (lists, queues, stacks, balancers) written as theme
 `define`s on top of them, not as one-off layouts.
 

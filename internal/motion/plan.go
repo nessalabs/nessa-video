@@ -97,6 +97,7 @@ type SwapMove struct {
 // turns green, or red when OK is false because its target is down.
 type Send struct {
 	Edge        *c.Element
+	Carry       *c.Element // an element that rides the connector instead of the dot
 	Start, Dur  float64
 	Hold        float64
 	Reply, Drop bool
@@ -134,6 +135,9 @@ type Fly struct {
 	Src        *c.Element
 	Out        bool
 	Start, Dur float64
+	// a move: from From's place (nil: its own) to Src's, staying there
+	Stay bool
+	From *c.Element
 }
 
 // IsoTime is how long an isolated element takes to lift out or go back.
@@ -153,28 +157,29 @@ type ScenePlan struct {
 	Scene      *c.Scene
 	Start, Dur float64 // Start is in video seconds
 
-	enter    map[*c.Element]Anim
-	exit     map[*c.Element]Anim
-	types    map[*c.Element]Anim
-	initial  map[*c.Element]string
-	changes  map[*c.Element][]StateChange
-	camera   []CameraMove
-	camInit  *c.Element
-	captions []Caption
-	sends    []Send
-	timeline []StepTime
-	marks    map[*c.Element][]Mark
-	ptrs     map[*c.Element][]PointerMove
-	swaps    map[*c.Element][]SwapMove
-	plays    map[*c.Element][]PlaySeg
-	flow     []FlowChange // children joining or leaving live containers
-	isos     []Isolation
-	flys     map[*c.Element][]Fly
-	sets     []TextSet
-	endState map[*c.Element]string // by identity
-	endCam   *c.Element            // identity
-	closeAt  float64               // when exits for the next scene's clear begin; 0 if none
-	stepsEnd float64               // when the last step finishes
+	enter      map[*c.Element]Anim
+	exit       map[*c.Element]Anim
+	types      map[*c.Element]Anim
+	initial    map[*c.Element]string
+	changes    map[*c.Element][]StateChange
+	camera     []CameraMove
+	camInit    *c.Element
+	captions   []Caption
+	sends      []Send
+	timeline   []StepTime
+	marks      map[*c.Element][]Mark
+	ptrs       map[*c.Element][]PointerMove
+	swaps      map[*c.Element][]SwapMove
+	plays      map[*c.Element][]PlaySeg
+	flow       []FlowChange // children joining or leaving live containers
+	isos       []Isolation
+	flys       map[*c.Element][]Fly
+	travellers map[*c.Element]bool // elements only seen riding a connector
+	sets       []TextSet
+	endState   map[*c.Element]string // by identity
+	endCam     *c.Element            // identity
+	closeAt    float64               // when exits for the next scene's clear begin; 0 if none
+	stepsEnd   float64               // when the last step finishes
 }
 
 // Plan is the whole video's timeline.
@@ -245,7 +250,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		types: map[*c.Element]Anim{}, initial: map[*c.Element]string{}, changes: map[*c.Element][]StateChange{},
 		marks: map[*c.Element][]Mark{},
 		ptrs:  map[*c.Element][]PointerMove{}, swaps: map[*c.Element][]SwapMove{},
-		plays: map[*c.Element][]PlaySeg{}, flys: map[*c.Element][]Fly{},
+		plays: map[*c.Element][]PlaySeg{}, flys: map[*c.Element][]Fly{}, travellers: map[*c.Element]bool{},
 		endState: map[*c.Element]string{}}
 
 	// carried elements keep their state and the camera keeps its target
@@ -487,6 +492,8 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 		case "fail", "recover":
 			dur = tm.State * 1.6
+		case "move":
+			dur = tm.Camera
 		case "isolate":
 			dur = IsoTime
 		case "return":
@@ -535,8 +542,30 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		_, stepwise := st.Lookup("to")
 		if st.Verb == "play" && stepwise {
 			dur = .8 // one step of a diagram told piece by piece
+			// a git history gets time for every command it runs
+			for _, e := range targets {
+				if e.Git == nil {
+					continue
+				}
+				from := 0.0
+				if segs := sp.plays[e]; len(segs) > 0 {
+					from = segs[len(segs)-1].To
+				}
+				v, _ := st.Lookup("to")
+				steps := (playTo(e, v) - from) * float64(len(e.Git.Cmds))
+				dur = math.Max(dur, steps*.75)
+			}
 		} else if st.Verb == "play" && line != nil && start >= line.start && start < line.start+line.speech {
 			dur = math.Max(1, line.start+line.speech-start)
+			for _, e := range targets {
+				if e.Git != nil { // at least a beat per command left to run
+					from := 0.0
+					if segs := sp.plays[e]; len(segs) > 0 {
+						from = segs[len(segs)-1].To
+					}
+					dur = math.Max(dur, (1-from)*float64(len(e.Git.Cmds))*.6)
+				}
+			}
 		}
 		if v, ok := st.Lookup("for"); ok {
 			if d, ok := seconds(v); ok {
@@ -592,6 +621,14 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				to, _ = selector.ParseSelector(v)
 			}
 			snd := Send{Start: start, Dur: dur, Ping: st.Verb == "ping", OK: true}
+			if v, ok := st.Lookup("carry"); ok {
+				if sel, err := selector.ParseSelector(v); err == nil {
+					if cs := c.Select(sc.Root, sel); len(cs) > 0 {
+						snd.Carry = cs[0]
+						sp.travellers[cs[0]] = true
+					}
+				}
+			}
 			for _, a := range st.Args {
 				switch a {
 				case "reply":
@@ -654,6 +691,24 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					to = playTo(e, v)
 				}
 				sp.plays[e] = append(sp.plays[e], PlaySeg{Start: start, Dur: dur, From: from, To: to})
+			}
+		case "move":
+			var dst *c.Element
+			if v, ok := st.Lookup("to"); ok {
+				if sel, err := selector.ParseSelector(v); err == nil {
+					if d := c.Select(sc.Root, sel); len(d) > 0 {
+						dst = d[0]
+					}
+				}
+			}
+			for _, e := range targets {
+				var from *c.Element
+				for _, f := range sp.flys[e] {
+					if f.Stay {
+						from = f.Src
+					}
+				}
+				sp.flys[e] = append(sp.flys[e], Fly{Src: dst, From: from, Stay: true, Start: start, Dur: dur})
 			}
 		case "isolate":
 			if len(targets) == 0 {
@@ -1115,6 +1170,10 @@ func playTo(e *c.Element, v string) float64 {
 		return 1
 	}
 	switch {
+	case e.Git != nil:
+		if n := len(e.Git.Cmds); n > 0 {
+			return clamp(f / float64(n))
+		}
 	case e.Sequence != nil:
 		rows := 0
 		for _, it := range e.Sequence.Items {

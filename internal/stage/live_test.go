@@ -240,3 +240,28 @@ scene one
 		t.Fatalf("ping to a down element should turn red: %+v", pk)
 	}
 }
+
+// move takes an element to another's place and keeps it there; a later
+// move with no destination brings it home.
+func TestMoveStays(t *testing.T) {
+	_, p, sc := liveScene(t, `video "t"
+scene one
+  row
+    box #a "a"
+    box #b "b"
+  card #job "job"
+  move #job to=#b
+  wait 1s
+  move #job
+`)
+	sp := p.Scenes[0]
+	tl := sp.Timeline()
+	job, b := byID(sc, "job"), byID(sc, "b")
+	at := sp.At(tl[1].Start).Flying()[job]
+	if at.B != b || at.W < .99 {
+		t.Fatalf("job should still be at #b after its move: %+v", at)
+	}
+	if _, away := sp.At(tl[2].Start + tl[2].Dur + .05).Flying()[job]; away {
+		t.Fatal("move with no destination should bring it home")
+	}
+}

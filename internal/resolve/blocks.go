@@ -23,6 +23,8 @@ func (r *resolver) block(e *c.Element, n *script.Node) {
 		r.timeline(e, n)
 	case "mermaid":
 		r.mermaid(e, n)
+	case "git":
+		r.git(e, n)
 	case "math":
 		if e.Text == "" && len(n.Raw) > 0 {
 			e.Text = strings.Join(n.Raw, " ")
@@ -410,4 +412,28 @@ func (r *resolver) sequenceDiagram(e *c.Element, n *script.Node, lines []string)
 		return
 	}
 	e.Sequence = sb
+}
+
+// git reads a git history, one command per line.
+func (r *resolver) git(e *c.Element, n *script.Node) {
+	gb := &c.GitBlock{}
+	for i, ln := range n.Raw {
+		t := strings.TrimSpace(ln)
+		if t == "" || t == "gitGraph" || strings.HasPrefix(t, "%%") {
+			continue
+		}
+		cmd, err := c.ParseGitLine(t)
+		if err != nil {
+			pos := n.Pos
+			pos.Line += i + 1
+			r.diags.Errorf(pos, "e.g. commit a1, branch feature, checkout main, merge feature, rebase main", "%v", err)
+			continue
+		}
+		gb.Cmds = append(gb.Cmds, cmd)
+	}
+	if len(gb.Cmds) == 0 {
+		r.diags.Errorf(n.Pos, "indent git commands under the line, e.g. commit a1", "git block is empty")
+		return
+	}
+	e.Git = gb
 }
