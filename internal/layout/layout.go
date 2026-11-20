@@ -179,6 +179,28 @@ func (e *engine) finish(root *c.Element, area Rect, w, h, fit float64) Result {
 	r := Rect{area.X + (area.W-w)/2, area.Y + (area.H-h)/2, w, h}
 	e.place(root, r)
 	e.res.Content = r
+	// an aside takes no room in the scene: it is placed in the part of the
+	// frame its isolated element leaves free
+	root.Walk(func(a *c.Element) {
+		if a.Kind() != "aside" {
+			return
+		}
+		aw, ah := e.measure(a)
+		lay := str(a, "layout", "left")
+		reg := AsideRegion(area, lay)
+		x := reg.X
+		switch lay {
+		case "center":
+			x = reg.CX() - aw/2
+		case "right":
+			x = reg.Right() - aw
+		}
+		y := reg.CY() - ah/2
+		if lay == "center" {
+			y = reg.Y
+		}
+		e.place(a, Rect{x, y, aw, ah})
+	})
 	if w > area.W || h > area.H {
 		e.res.Fit = min(area.W/w, area.H/h)
 	}
@@ -500,7 +522,7 @@ func Plain(s string) string {
 var textKinds = map[string]bool{"title": true, "p": true, "label": true, "metric": true, "code": true}
 
 func (e *engine) inFlow(el *c.Element) bool {
-	return el.Kind() != "edge" && el.Kind() != "use" && str(el, "hidden", "false") != "true" && !e.st.Out[el]
+	return el.Kind() != "edge" && el.Kind() != "use" && el.Kind() != "badge" && el.Kind() != "aside" && str(el, "hidden", "false") != "true" && !e.st.Out[el]
 }
 
 // textOf is an element's text, as a `set` step may have changed it.
@@ -522,7 +544,7 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 	kind := el.Kind()
 	pad := num(el, "pad", 0)
 	switch {
-	case kind == "row" || kind == "col" || kind == "scene" || !c.IsBuiltinKind(kind):
+	case kind == "row" || kind == "col" || kind == "aside" || kind == "scene" || !c.IsBuiltinKind(kind):
 		gap := num(el, "gap", e.opt.Gap)
 		if kind == "scene" {
 			gap = num(el, "gap", e.opt.Gap*2)
@@ -556,6 +578,8 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 		return cross + 2*pad, main + 2*pad
 	case kind == "table":
 		return e.table(el, nil)
+	case kind == "tree":
+		return e.tree(el, nil)
 	case kind == "grid":
 		cols := int(num(el, "cols", 2))
 		gap := num(el, "gap", e.opt.Gap)
@@ -651,6 +675,23 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 	case kind == "circle":
 		r := num(el, "r", 28)
 		return 2 * r, 2 * r
+	case kind == "meter":
+		n := max(num(el, "max", 5), 1)
+		if str(el, "kind", "slots") == "bar" {
+			return num(el, "len", 160), MeterSlot
+		}
+		return n*MeterSlot + (n-1)*MeterGap, MeterSlot
+	case kind == "badge":
+		t := e.opt.Type["label"]
+		return e.m.Measure(Plain(e.textOf(el)), t.Font, t.Size) + 18, 22
+	case kind == "timer":
+		r := num(el, "r", 16)
+		w := 2 * r
+		if txt := e.textOf(el); txt != "" {
+			t := e.opt.Type["label"]
+			w += 10 + e.m.Measure(Plain(txt), t.Font, t.Size)
+		}
+		return w, 2 * r
 	case kind == "store":
 		return 100, 80
 	case kind == "stack":
@@ -746,11 +787,18 @@ func (e *engine) wrap(s string, t Type, maxW float64) []string {
 
 func (e *engine) place(el *c.Element, r Rect) {
 	e.res.Boxes[el] = r
+	// badges sit on their element's top right corner, outside the flow
+	for _, ch := range el.Children {
+		if ch.Kind() == "badge" && str(ch, "hidden", "false") != "true" {
+			w, h := e.measure(ch)
+			e.res.Boxes[ch] = Rect{r.Right() - w*0.6, r.Y - h*0.55, w, h}
+		}
+	}
 	kind := el.Kind()
 	pad := num(el, "pad", 0)
 	inner := Rect{r.X + pad, r.Y + pad, r.W - 2*pad, r.H - 2*pad}
 	switch {
-	case kind == "row" || kind == "col" || kind == "scene" || !c.IsBuiltinKind(kind):
+	case kind == "row" || kind == "col" || kind == "aside" || kind == "scene" || !c.IsBuiltinKind(kind):
 		horizontal := e.horizontal(el)
 		gap := num(el, "gap", e.opt.Gap)
 		if kind == "scene" {
@@ -828,6 +876,8 @@ func (e *engine) place(el *c.Element, r Rect) {
 		}
 	case kind == "table":
 		e.table(el, &inner)
+	case kind == "tree":
+		e.tree(el, &inner)
 	case kind == "grid":
 		cols := max(int(num(el, "cols", 2)), 1)
 		gap := num(el, "gap", e.opt.Gap)
@@ -1210,4 +1260,150 @@ func (e *engine) table(el *c.Element, at *Rect) (float64, float64) {
 		y += rowH[i]
 	}
 	return W, H
+}
+
+// TreeKids lists a tree node's children in the tree: its child elements,
+// leaving out connectors, uses and badges. Every one counts, shown yet or
+// not, so a tree never moves when a node is added.
+func TreeKids(n *c.Element) []*c.Element {
+	var out []*c.Element
+	for _, ch := range n.Children {
+		if ch.Edge == nil && ch.Kind() != "use" && ch.Kind() != "badge" {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
+
+// TreeOf returns the tree that n is a node of, or nil.
+func TreeOf(n *c.Element) *c.Element {
+	for p := n.ParentElement(); p != nil; p = p.ParentElement() {
+		if p.Kind() == "tree" {
+			return p
+		}
+		if p.Edge != nil || p.Kind() == "badge" || !c.IsBuiltinKind(p.Kind()) && p.Kind() != "scene" {
+			return nil
+		}
+	}
+	return nil
+}
+
+// tree sizes (at == nil) or places a tree. Positions come from the whole
+// tree, nodes not shown yet included, so a node that appears never moves
+// the others. kind=binary gives each node a left and a right slot (a lone
+// child goes left unless it has side=right) whose spread halves at each
+// level, like a binary search tree is drawn; otherwise leaves sit side by
+// side and each parent is centred over its children.
+func (e *engine) tree(el *c.Element, at *Rect) (float64, float64) {
+	gap := num(el, "gap", 24)
+	var nodeW, nodeH float64
+	depth := 0
+	var walk func(n *c.Element, d int)
+	walk = func(n *c.Element, d int) {
+		w, h := e.measure(n)
+		nodeW, nodeH = max(nodeW, w), max(nodeH, h)
+		depth = max(depth, d)
+		for _, ch := range TreeKids(n) {
+			walk(ch, d+1)
+		}
+	}
+	roots := TreeKids(el)
+	for _, r := range roots {
+		walk(r, 0)
+	}
+	level := num(el, "rank", nodeH+44)
+	pos := map[*c.Element][2]float64{}
+	var W float64
+	if str(el, "kind", "") == "binary" {
+		unit := nodeW + gap
+		span := unit * float64(int(1)<<depth) // room for every slot on the deepest level
+		var put func(n *c.Element, x float64, d int)
+		put = func(n *c.Element, x float64, d int) {
+			pos[n] = [2]float64{x, float64(d) * level}
+			kids := TreeKids(n)
+			off := span / float64(int(4)<<d)
+			for i, ch := range kids {
+				right := i == 1 || len(kids) == 1 && str(ch, "side", "left") == "right"
+				if right {
+					put(ch, x+off, d+1)
+				} else {
+					put(ch, x-off, d+1)
+				}
+			}
+		}
+		for i, r := range roots {
+			put(r, span*(float64(i)+0.5), 0)
+		}
+		W = span * float64(max(len(roots), 1))
+		// trim empty slots at the sides
+		lo, hi := W, 0.0
+		for _, p := range pos {
+			lo, hi = min(lo, p[0]-nodeW/2), max(hi, p[0]+nodeW/2)
+		}
+		for n, p := range pos {
+			pos[n] = [2]float64{p[0] - lo, p[1]}
+		}
+		W = hi - lo
+	} else {
+		next := 0.0
+		var put func(n *c.Element, d int) float64
+		put = func(n *c.Element, d int) float64 {
+			kids := TreeKids(n)
+			var x float64
+			if len(kids) == 0 {
+				x = next + e.size[n][0]/2
+				next += e.size[n][0] + gap
+			} else {
+				first := put(kids[0], d+1)
+				lastX := first
+				for _, ch := range kids[1:] {
+					lastX = put(ch, d+1)
+				}
+				x = (first + lastX) / 2
+			}
+			pos[n] = [2]float64{x, float64(d) * level}
+			return x
+		}
+		for _, r := range roots {
+			put(r, 0)
+		}
+		W = max(next-gap, 0)
+	}
+	H := float64(depth)*level + nodeH
+	if at == nil {
+		return W, H
+	}
+	ox := at.X + (at.W-W)/2
+	for n, p := range pos {
+		s := e.size[n]
+		e.place(n, Rect{ox + p[0] - s[0]/2, at.Y + p[1] + (nodeH-s[1])/2, s[0], s[1]})
+	}
+	return W, H
+}
+
+// Meter sizes: one slot's side and the gap between slots.
+const MeterSlot, MeterGap = 14.0, 6.0
+
+// SpotRegion is where an isolated element goes for a layout: the left part
+// of the frame for left, the top for center, the right part for right.
+func SpotRegion(area Rect, layout string) Rect {
+	switch layout {
+	case "center":
+		return Rect{area.X, area.Y, area.W, area.H * 0.52}
+	case "right":
+		return Rect{area.X + area.W*0.56, area.Y, area.W * 0.44, area.H}
+	}
+	return Rect{area.X, area.Y, area.W * 0.44, area.H}
+}
+
+// AsideRegion is where an aside goes for a layout: whatever SpotRegion
+// leaves free.
+func AsideRegion(area Rect, layout string) Rect {
+	switch layout {
+	case "center":
+		return Rect{area.X, area.Y + area.H*0.56, area.W, area.H * 0.44}
+	case "right":
+		return Rect{area.X, area.Y, area.W * 0.52, area.H}
+	}
+	return Rect{area.X + area.W*0.48, area.Y, area.W * 0.52, area.H}
 }

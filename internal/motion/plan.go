@@ -92,10 +92,15 @@ type SwapMove struct {
 	Start, Dur float64
 }
 
-// Send moves a packet along a connector.
+// Send moves a packet along a connector. Reply brings it back after Hold;
+// Drop turns it red where it arrives; a ping (Ping) is a small dot that
+// turns green, or red when OK is false because its target is down.
 type Send struct {
-	Edge       *c.Element
-	Start, Dur float64
+	Edge        *c.Element
+	Start, Dur  float64
+	Hold        float64
+	Reply, Drop bool
+	Ping, OK    bool
 }
 
 // FlowChange is a child of a live container (`flow=live`) joining its
@@ -112,6 +117,27 @@ type TextSet struct {
 	Text       string
 	Start, Dur float64
 }
+
+// Isolation lifts El out of its scene to a spotlight from Start over Dur,
+// with Aside (if any) beside it, and brings it back from Back over
+// BackDur (Back is +Inf until a return step).
+type Isolation struct {
+	El, Aside        *c.Element
+	Layout, Backdrop string
+	Start, Dur       float64
+	Back, BackDur    float64
+}
+
+// Fly moves an element between its own place and Src's: in, from Src to
+// its place as it appears; out, back to Src as it leaves.
+type Fly struct {
+	Src        *c.Element
+	Out        bool
+	Start, Dur float64
+}
+
+// IsoTime is how long an isolated element takes to lift out or go back.
+const IsoTime = 0.9
 
 // FlowTime is how long siblings take to make room or close a gap.
 const FlowTime = 0.5
@@ -142,6 +168,8 @@ type ScenePlan struct {
 	swaps    map[*c.Element][]SwapMove
 	plays    map[*c.Element][]PlaySeg
 	flow     []FlowChange // children joining or leaving live containers
+	isos     []Isolation
+	flys     map[*c.Element][]Fly
 	sets     []TextSet
 	endState map[*c.Element]string // by identity
 	endCam   *c.Element            // identity
@@ -217,7 +245,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		types: map[*c.Element]Anim{}, initial: map[*c.Element]string{}, changes: map[*c.Element][]StateChange{},
 		marks: map[*c.Element][]Mark{},
 		ptrs:  map[*c.Element][]PointerMove{}, swaps: map[*c.Element][]SwapMove{},
-		plays:    map[*c.Element][]PlaySeg{},
+		plays: map[*c.Element][]PlaySeg{}, flys: map[*c.Element][]Fly{},
 		endState: map[*c.Element]string{}}
 
 	// carried elements keep their state and the camera keeps its target
@@ -282,10 +310,18 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		})
 	}
 	linkAt := map[*c.Element]float64{} // links a walk draws as it reaches the next part
+	// an aside appears only when an isolate step brings it in
+	sc.Root.Walk(func(e *c.Element) {
+		if e.Kind() == "aside" {
+			waiting[e] = true
+		}
+	})
+	shownLater := map[*c.Element]bool{} // brought in by a show step of their own
 	for _, st := range sc.Steps {
 		if st.Verb == "show" && st.Target != nil {
 			for _, e := range c.Select(sc.Root, st.Target) {
 				waiting[e] = true
+				shownLater[e] = true
 			}
 		}
 	}
@@ -318,8 +354,8 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		}
 		i := 0
 		for _, ch := range e.Children {
-			if ch.Edge != nil {
-				continue
+			if ch.Edge != nil || showing && shownLater[ch] {
+				continue // a part with its own show step waits for it
 			}
 			place(ch, start+float64(i)*stagger)
 			i++
@@ -436,8 +472,25 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 		case "camera":
 			dur = tm.Camera
-		case "send":
+		case "send", "ping":
 			dur = tm.Send
+			if st.Verb == "ping" {
+				dur = tm.Send * 1.3
+			}
+			for _, a := range st.Args {
+				switch a {
+				case "reply":
+					dur = 2*tm.Send + .4
+				case "drop":
+					dur = tm.Send + .5
+				}
+			}
+		case "fail", "recover":
+			dur = tm.State * 1.6
+		case "isolate":
+			dur = IsoTime
+		case "return":
+			dur = IsoTime
 		case "ptr":
 			dur = .45
 		case "swap":
@@ -447,6 +500,9 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		case "play":
 			dur = 2
 		case "show":
+			if _, ok := st.Lookup("from"); ok {
+				dur = .7
+			}
 			for _, e := range targets {
 				dur = math.Max(dur, modeDur(prop(e, "enter", "fade"), tm))
 				if live(e) {
@@ -489,9 +545,16 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 		}
 
 		switch st.Verb {
-		case "focus", "dim", "active", "select", "trace", "rest":
+		case "focus", "dim", "active", "select", "trace", "rest", "fail", "recover":
+			to := st.Verb
+			switch to {
+			case "fail":
+				to = "down"
+			case "recover":
+				to = "rest"
+			}
 			for _, e := range targets {
-				sp.changes[e] = append(sp.changes[e], StateChange{El: e, From: state(e), To: st.Verb, Start: start, Dur: dur})
+				sp.changes[e] = append(sp.changes[e], StateChange{El: e, From: state(e), To: to, Start: start, Dur: dur})
 			}
 		case "leave":
 			for _, e := range targets {
@@ -500,6 +563,13 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					mode = v
 				}
 				sp.exit[e] = Anim{Mode: mode, Start: start, Dur: dur}
+				if v, ok := st.Lookup("to"); ok {
+					if sel, err := selector.ParseSelector(v); err == nil {
+						if dst := c.Select(sc.Root, sel); len(dst) > 0 {
+							sp.flys[e] = append(sp.flys[e], Fly{Src: dst[0], Out: true, Start: start, Dur: dur})
+						}
+					}
+				}
 				if live(e) { // the gap closes once it has gone
 					sp.flow = append(sp.flow, FlowChange{El: e, Start: start + dur, Dur: FlowTime})
 				}
@@ -516,14 +586,28 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 			}
 			sp.camera = append(sp.camera, CameraMove{From: cam, To: to, Start: start, Dur: dur})
 			cam = to
-		case "send":
+		case "send", "ping":
 			var to *selector.Selector
 			if v, ok := st.Lookup("to"); ok {
 				to, _ = selector.ParseSelector(v)
 			}
+			snd := Send{Start: start, Dur: dur, Ping: st.Verb == "ping", OK: true}
+			for _, a := range st.Args {
+				switch a {
+				case "reply":
+					snd.Reply, snd.Dur, snd.Hold = true, tm.Send, .4
+				case "drop":
+					snd.Drop, snd.Dur = true, tm.Send
+				}
+			}
 			for _, e := range targets {
 				if edge := edgeFrom(sc, e, to); edge != nil {
-					sp.sends = append(sp.sends, Send{Edge: edge, Start: start, Dur: dur})
+					s := snd
+					s.Edge = edge
+					if _, ends := edge.Edge.Ends(sc.Root); len(ends) > 0 && s.Ping {
+						s.OK = state(ends[0]) != "down"
+					}
+					sp.sends = append(sp.sends, s)
 				}
 			}
 		case "type":
@@ -571,6 +655,82 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				}
 				sp.plays[e] = append(sp.plays[e], PlaySeg{Start: start, Dur: dur, From: from, To: to})
 			}
+		case "isolate":
+			if len(targets) == 0 {
+				break
+			}
+			iso := Isolation{El: targets[0], Layout: "left", Backdrop: "dim", Start: start, Dur: IsoTime, Back: math.Inf(1)}
+			if v, ok := st.Lookup("backdrop"); ok {
+				iso.Backdrop = v
+			}
+			if v, ok := st.Lookup("aside"); ok {
+				if sel, err := selector.ParseSelector(v); err == nil {
+					if as := c.Select(sc.Root, sel); len(as) > 0 {
+						iso.Aside = as[0]
+						iso.Layout = prop(as[0], "layout", "left")
+					}
+				}
+			}
+			if v, ok := st.Lookup("layout"); ok {
+				iso.Layout = v
+			}
+			sp.isos = append(sp.isos, iso)
+			if iso.Aside != nil {
+				showing = true
+				place(iso.Aside, start+IsoTime*0.55)
+				showing = false
+				end := start
+				iso.Aside.Walk(func(x *c.Element) {
+					if a, ok := sp.enter[x]; ok && !math.IsInf(a.Start, 1) {
+						end = math.Max(end, a.end())
+					}
+				})
+				dur = math.Max(dur, end-start)
+			}
+		case "return":
+			k := -1
+			for i := len(sp.isos) - 1; i >= 0; i-- {
+				if math.IsInf(sp.isos[i].Back, 1) && (len(targets) == 0 || sp.isos[i].El == targets[0]) {
+					k = i
+					break
+				}
+			}
+			if k < 0 {
+				break
+			}
+			iso := &sp.isos[k]
+			order, _ := st.Lookup("order")
+			back := start
+			if iso.Aside != nil {
+				var shown []*c.Element
+				for _, ch := range iso.Aside.Children {
+					if a, ok := sp.enter[ch]; ok && !math.IsInf(a.Start, 1) && a.Start <= start && ch.Edge == nil {
+						if _, gone := sp.exit[ch]; !gone && prop(ch, "keep", "false") != "true" {
+							shown = append(shown, ch)
+						}
+					}
+				}
+				for i := range shown {
+					ch := shown[len(shown)-1-i]
+					at := start + float64(i)*0.08
+					mode := prop(ch, "exit", "fade")
+					if order == "together" || order == "cut" {
+						at = start
+					}
+					if order == "cut" {
+						mode = "none"
+					}
+					d := modeDur(mode, tm)
+					if fl := sp.flys[ch]; len(fl) > 0 && order != "cut" {
+						d = .6
+						sp.flys[ch] = append(sp.flys[ch], Fly{Src: fl[0].Src, Out: true, Start: at, Dur: d})
+					}
+					sp.exit[ch] = Anim{Mode: mode, Start: at, Dur: d}
+					back = math.Max(back, at+d*0.6)
+				}
+			}
+			iso.Back, iso.BackDur = back, IsoTime
+			dur = back - start + IsoTime
 		case "show":
 			showing = true
 			for _, e := range targets {
@@ -583,6 +743,13 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					continue
 				}
 				place(e, start)
+				if v, ok := st.Lookup("from"); ok {
+					if sel, err := selector.ParseSelector(v); err == nil {
+						if src := c.Select(sc.Root, sel); len(src) > 0 {
+							sp.flys[e] = append(sp.flys[e], Fly{Src: src[0], Start: start, Dur: math.Max(dur, .7)})
+						}
+					}
+				}
 			}
 			showing = false
 		case "set":
@@ -834,6 +1001,13 @@ func partOf(owner *c.Element, id string) *c.Element {
 			found = x
 		}
 	})
+	if found == nil { // a node of a tree written in the scene, by its id
+		owner.Walk(func(x *c.Element) {
+			if found == nil && x != owner && x.ID() == id {
+				found = x
+			}
+		})
+	}
 	return found
 }
 

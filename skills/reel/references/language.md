@@ -42,6 +42,11 @@ the line above. `# ` starts a comment. In quoted text, `\"` is a quote and
 | `metric "1024" label="records kept" note="GRANT_LOG_RETAINED, share_grants.rs"` | a big number with a caption and where it comes from; `focus` underlines it |
 | `row`, `col`, `grid cols=N`, `layer`, `place` | layout: `gap`, `align`, `justify`, `pad`, `w`, `h`, `x`, `y`; `flow=live` gives room only to children on screen, so `show`/`leave` inside it make the rest glide; `sides=left,right,bottom` (or `all`) draws those edges, e.g. an open bin |
 | `table` | rows of cells: each child is a `row`, its children the cells (`label` for a header, `p` for values). Columns line up, rules part the rows, and rows are live: `show`/`leave` a row, `set` a cell, `focus` a row to highlight it |
+| `tree kind=binary` | each child is a node (`circle "50"`), a node's children its children; nodes never move when one is shown later, so `show #n90` grows the tree in place. In a binary tree a lone child goes left unless it has `side=right`. Lines from parent to child draw in with each node |
+| `meter "2" max=5` | load or fill as slots (`kind=bar` for a bar); `set #m "4"` fills it smoothly |
+| `badge "leader"` | a small tag pinned to the top right of the element it is written inside |
+| `timer "TTL"` | a ring that empties while `play #t for=5s` runs |
+| `aside #why layout=left` | a column shown only during an `isolate` step that names it; `layout=left` puts the isolated element left and the aside right, `center` puts the aside below, `right` mirrors left |
 | `laptop`, `phone`, `server`, `process`, `db` | theme components; parts like `#api/unit1`, `#api/procs` |
 | `list`, `node`, `queue`, `cell`, `lifo`, `block`, `bucket`, `balancer` | collections: put items inside (`node "3"`, `cell "A"`, servers in a `balancer`); `show` adds an item where it is written, `leave` removes it, the rest glide. `lifo` is a stack: an open bin that fills from the bottom, holding `block "x"`s, top item first. Show a hash map as a `table` (key, bucket, value), or as `bucket "0"` rows holding `node`s for its chains |
 | `arrow "label" dir=right len=40` | a short arrow on its own, `dir=left|down|up` |
@@ -77,7 +82,12 @@ Steps run one after another after the scene's elements have entered.
 | `show SELECTOR` | draw it in now instead of when the scene opens; with `on="words"`, as it is named |
 | `say "heading"` | the scene's heading at the top; spoken when the video has a voice, with the spoken words as subtitles at the bottom; `say "short heading" speak="the spoken sentence"` is the usual form. The next step waits until the line is spoken; use `with` to run a step during it |
 | `camera zoom SELECTOR`, `camera reset` | move the view |
-| `send SELECTOR` | dot along the connector starting there; `send #lb to=#s2` picks the one ending at `#s2` |
+| `send SELECTOR` | dot along the connector starting there; `send #lb to=#s2` picks the one ending at `#s2`. Add `reply` for a dot that comes back after a moment, or `drop` for one that turns red and falls where it arrives |
+| `ping #lb to=#s2` | a health check: a small dot that turns green as it arrives, or red if the target is down |
+| `fail SELECTOR` / `recover SELECTOR` | put an element in the down state (red tint, red text; connectors to it turn red and dashed) and back; colours change smoothly |
+| `isolate SELECTOR aside=#why backdrop=dim` | lift one element out of the scene: it grows and moves to the spotlight while the rest dims (`backdrop=hide` hides it); a dashed outline marks where it was, and the aside comes in beside it. Steps that follow can show things in the aside |
+| `return SELECTOR` | end the isolation: the aside leaves (each part with its own `exit=`; `keep=true` parts stay; `order=together` or `order=cut`), and the element glides back |
+| `show SELECTOR from=#src` | the element flies out of `#src` as it appears (a value copied out of a tree into a list); it flies back on `return`. `leave #x to=#y` flies to `#y` as it goes |
 | `set SELECTOR "text"` | change an element's text in place (a counter, a value), cross-fading; `set #n "4"` on a `node` changes its value |
 | `type SELECTOR` | type out a terminal, code or text block |
 | `mark SELECTOR lines=…` / `cells=…` | move a code or array focus; `lines=+12..+14,+20` takes several ranges |

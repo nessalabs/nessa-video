@@ -108,6 +108,15 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   value that changes, and `send #lb to=#s2` to move a request along one
   connector. For a new structure, build it as a `define` on `flow=live`
   containers, `sides=`, `table`, `arrow` and connectors, not as a one-off layout.
+- For trees (search trees, heaps, file systems, org charts) use `tree`;
+  write every node the story will need and `show` the ones added later,
+  so nothing jumps. `walk #t n50 n70 n80` traces a search path.
+- For services, show load with `meter`, requests with `send ... reply`,
+  health checks with `ping`, and failures with `fail`/`recover`; keep a
+  failed element where it is rather than removing it.
+- To explain one part in depth, `isolate` it with an `aside` holding the
+  explanation, then `return` to the whole picture. Use `show #x from=#y`
+  so values visibly come from the scene.
 - When code is the point, read it with `file=` rather than pasting it, so
   line numbers match, and focus the lines with `focus=` or `mark`; long
   hunks fold down to those lines automatically.

@@ -11,6 +11,7 @@ sources:
   - internal/motion/plan_test.go
   - internal/layout/layout.go
   - internal/stage/live_test.go
+  - internal/stage/stage.go
 diagramLinks: {}
 diagramDetails:
   - diagram: 0
@@ -101,6 +102,36 @@ centring afresh, so an item added to a list moves only the items after it.
 Connectors follow the elements they join. One step that
 changes several things, such as a `set` on a component, moves everything
 together.
+
+## Requests, health checks and failures
+
+`send #lb to=#s2 reply` sends a dot down the connector and, after a short
+pause at the server, back again; `send … drop` turns the dot red where it
+arrives and lets it fall. `ping #lb to=#s2` is a health check: a smaller
+dot that turns green as it reaches a healthy element, or red if the
+element is down. `fail #s2` puts an element in the down state: a red
+tint and red text, and every connector touching it turns red and dashed;
+`recover #s2` brings it back. Colours change smoothly over the step, and
+a failed element keeps its place, so nothing else moves.
+
+## Isolating one element
+
+`isolate #n30 aside=#why` lifts one element out of the scene into a
+spotlight for a closer look. Over about a second it grows and moves to
+the left third of the frame (`layout=center` moves it to the top, `right`
+to the right third), the rest of the scene recedes slightly and dims
+(`backdrop=hide` fades it out), and a dashed outline marks where it came
+from. The `aside` named by the step, a column written anywhere in the
+scene, then comes in where the element left room; it takes no room in
+the scene and stays hidden until an isolate step names it. Steps that
+follow can `show` its parts, including `show #c20 from=#n20`, which flies
+a copy out of the scene into the aside.
+
+`return #n30` ends it: the aside's parts leave in reverse order with
+their own `exit=` (those flown in fly back), parts with `keep=true`
+stay, `order=together` or `order=cut` change the timing, and then the
+element glides back into its outline as the scene comes forward again.
+A tree node is lifted on its own; its children stay in the tree.
 
 ## Leaving
 

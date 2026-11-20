@@ -9,11 +9,11 @@ import "sort"
 // Primitives are drawn directly.
 var Primitives = []string{
 	"box", "card", "circle", "decision", "store", "stack",
-	"title", "p", "code", "label", "metric", "arrow",
+	"title", "p", "code", "label", "metric", "arrow", "meter", "badge", "timer",
 }
 
 // Layouts arrange their children.
-var Layouts = []string{"row", "col", "grid", "table", "layer", "place"}
+var Layouts = []string{"row", "col", "grid", "table", "tree", "aside", "layer", "place"}
 
 // Blocks are content with their own input format.
 var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid", "math"}
@@ -22,12 +22,14 @@ var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid
 var Verbs = []string{
 	"focus", "dim", "active", "select", "trace", "rest", // states
 	"leave", "clear", // exits
-	"camera", "send", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
+	"fail", "recover", // the down state
+	"isolate", "return", // sub-scenes
+	"camera", "send", "ping", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
 	"say", "wait", "hold",
 }
 
 // States an element can be in.
-var States = []string{"rest", "focus", "dim", "active", "select", "trace"}
+var States = []string{"rest", "focus", "dim", "active", "select", "trace", "down"}
 
 // EnterModes and ExitModes share the same names.
 var EnterModes = []string{"draw", "fade", "rise", "type", "none"}
@@ -42,7 +44,7 @@ var Props = []string{
 	"enter", "exit", "stagger", "for", "at", "ease", "keep",
 	// content
 	"file", "path", "lines", "hunk", "focus", "lang", "items", "n", "data", "kind",
-	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "context", "speak", "model", "on", "to", "reveal",
+	"ptr", "cells", "unit", "dir", "rank", "order", "hidden", "fit", "flow", "sides", "len", "max", "aside", "backdrop", "keep", "from", "layout", "context", "speak", "model", "on", "to", "reveal",
 }
 
 // IsVerb reports whether k names a step.
@@ -85,6 +87,9 @@ var KindProps = map[string]string{
 	"title":    `"text with ==emphasis=="`,
 	"p":        `"text" (wraps)`,
 	"label":    `"text" color= font= size=`,
+	"meter":    `"3" max=5 kind=slots|bar len= (bar length) tone=; set #m "4" fills or empties it smoothly`,
+	"badge":    `"leader" tone=; a small tag pinned to the top right corner of the element it is written inside`,
+	"timer":    `"TTL" r=16 tone=; a ring that empties while play #t for=5s runs`,
 	"arrow":    `"text above it" dir=right|left|down|up len=40`,
 	"metric":   `"1024" label="what it counts" note="where it comes from" size= tone=bad|good|warn|info`,
 	"code":     `LANG, indented lines or file= lines=; focus= context= (lines kept around focus)`,
@@ -98,6 +103,8 @@ var KindProps = map[string]string{
 	"row":      `gap= align= justify= pad= dir= fit= flow=live (children not shown yet or gone take no room; the rest glide) sides=left,right,bottom (draw those edges)`,
 	"col":      `gap= align= justify= pad= dir= fit= flow=live sides=`,
 	"grid":     `cols= gap= flow=live`,
+	"aside":    `layout=left|center|right gap= align=; a column shown only while an isolate step names it (aside=#id): beside the isolated element, or below it with layout=center`,
+	"tree":     `kind=binary gap= rank= (level height); each child is a node, a node's children its children in the tree; nodes never move when one is shown; side=right puts a lone child of a binary node on the right`,
 	"table":    `flow=live (default); each child is a row, its children the cells; columns line up and rules part the rows`,
 	"layer":    `(children stacked)`,
 	"place":    `children take x= y=`,

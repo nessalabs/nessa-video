@@ -82,7 +82,7 @@ To check how a moment looks, render and pull frames with ffmpeg
 | `internal/composition` | the domain model: video, scenes, elements, edges; `catalog.go` lists kinds, steps and props |
 | `internal/selector` | the selector language (`#id`, `.class`, `a>b`) |
 | `internal/theme` | built-in theme packs; `hairline/theme.reel` holds tokens, styles and component `define`s |
-| `internal/layout` | sizes and places elements: rows, columns, grids, tables, flowcharts, live layout states |
+| `internal/layout` | sizes and places elements: rows, columns, grids, tables, trees, asides, flowcharts, live layout states |
 | `internal/motion` | plans steps over time: enters, exits, states, flow changes, `set`, narration timing |
 | `internal/stage` | turns a laid-out scene at a moment into a display list (shapes, text, connectors, blocks) |
 | `internal/render` | the display list and the canvas rasterizer |
@@ -97,7 +97,7 @@ To check how a moment looks, render and pull frames with ffmpeg
 | `examples` | sample scripts |
 
 New building blocks go in as engine primitives that are generic
-(`flow=live`, `set`, `table`, `sides=`, `arrow`, connector fan-out), with
+(`flow=live`, `set`, `table`, `tree`, `meter`, `badge`, `timer`, `sides=`, `arrow`, connector fan-out, `send … reply|drop`, `ping`, `fail`/`recover`, `isolate`/`return`, `show … from=`), with
 everyday structures (lists, queues, stacks, balancers) written as theme
 `define`s on top of them, not as one-off layouts.
 

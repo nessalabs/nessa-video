@@ -68,6 +68,8 @@ style
   edge       enter=draw exit=fade
   arrow      enter=draw exit=fade
   table      flow=live
+  aside      gap=20 align=start
+  tree       gap=28
   box        enter=fade
   card       enter=fade
   circle     enter=fade

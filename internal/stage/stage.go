@@ -242,7 +242,43 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 			p.glide[e] = gd
 		}
 	}
-	p.element(sc.Root, "rest", 1, 0)
+	p.dimAll = 1
+	iso, isoF := m.Isolation()
+	plainView := view
+	if iso != nil && isoF > 0 {
+		p.iso = iso.El
+		cxF, cyF := area.CX()*scale, area.CY()*scale
+		p.view = render.ScaleAt(1-0.08*isoF, cxF, cyF).Mul(view)
+		p.m = p.view
+		if iso.Backdrop == "hide" {
+			p.dimAll = 1 - isoF
+		} else {
+			p.dimAll = 1 - 0.86*isoF
+		}
+	}
+	// elements flying between two places
+	for e, fl := range m.Flying() {
+		own, ok1 := lay.Boxes[e]
+		src, ok2 := lay.Boxes[fl.Src]
+		if !ok1 || !ok2 || own.W <= 0 {
+			continue
+		}
+		ov := p.view
+		if inAside(e) {
+			ov = base
+		}
+		ox, oy := apply(ov, own.CX(), own.CY())
+		sx, sy := apply(p.view, src.CX(), src.CY())
+		k0 := (src.W * p.view.Scale()) / (own.W * ov.Scale())
+		k := 1 + (k0-1)*fl.W
+		g := render.Translate(ox+(sx-ox)*fl.W, oy+(sy-oy)*fl.W).Mul(render.Affine{k, 0, 0, k, 0, 0}).Mul(render.Translate(-ox, -oy))
+		if p.glide == nil {
+			p.glide = map[*c.Element]render.Affine{}
+		}
+		p.glide[e] = g
+	}
+	backView := p.view
+	p.element(sc.Root, "rest", p.dimAll, 0)
 	sc.Root.Walk(func(e *c.Element) {
 		if e.Edge != nil {
 			p.edge(sc, e)
@@ -251,6 +287,19 @@ func (s *Stage) Frame(sc *c.Scene, lay layout.Result, m motion.Moment) *render.L
 	for _, pk := range m.Packets() {
 		p.packet(sc, pk)
 	}
+	if p.iso != nil {
+		p.isolated(iso, isoF, backView, plainView, base, scale, area)
+	}
+	// asides draw last, over the dimmed scene, in plain frame coordinates
+	p.view, p.dimAll = base, 1
+	p.drawingAside = true
+	sc.Root.Walk(func(a *c.Element) {
+		if a.Kind() == "aside" {
+			p.element(a, "rest", 1, 0)
+		}
+	})
+	p.drawingAside = false
+	p.view = plainView
 
 	p.m = base
 	p.draw = 1
@@ -291,6 +340,11 @@ type painter struct {
 	opacity float64                      // multiplies every colour drawn
 	glide   map[*c.Element]render.Affine // carried elements on their way, in frame pixels
 	draw    float64                      // stroke progress for the element being drawn
+
+	iso          *c.Element // the isolated element, drawn after the rest
+	drawingIso   bool
+	drawingAside bool
+	dimAll       float64 // how much the backdrop shows while something is isolated
 }
 
 func (p *painter) stroke(d string, cl color.NRGBA, dash bool) {
@@ -413,6 +467,9 @@ func (p *painter) look(state string) look {
 		return look{line: s.col("line-1"), text: s.col("ink"), brackets: true}
 	case "trace":
 		return look{line: s.col("line-2"), text: s.col("ink"), dash: true}
+	case "down":
+		bad := s.toneCol("bad")
+		return look{line: bad, text: bad, fill: alpha(bad, .14)}
 	}
 	return look{line: s.col("line-1"), text: s.col("ink")}
 }
@@ -443,19 +500,33 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	if v, ok := e.Computed["hidden"]; ok && v.Value == "true" {
 		return
 	}
+	if e.Kind() == "aside" && !p.drawingAside {
+		return
+	}
+	if e == p.iso && !p.drawingIso {
+		// drawn later in the spotlight; a tree node leaves its children here
+		if layout.TreeOf(e) != nil {
+			op := opacity * p.mo.Look(e).Opacity
+			for _, ch := range layout.TreeKids(e) {
+				p.element(ch, inherited, op, rise)
+			}
+		}
+		return
+	}
 	if g, ok := p.glide[e]; ok {
 		saved := p.view
 		p.view = g.Mul(saved)
 		defer func() { p.view = saved }()
 	}
 	ap := p.mo.Look(e)
+	held := opacity // what holds e lets it show this much
 	opacity *= ap.Opacity
 	if opacity <= 0.002 {
 		return
 	}
 	rise += ap.Rise
 	eff := func(s string) string {
-		if s == "rest" && (inherited == "dim" || inherited == "focus") {
+		if s == "rest" && (inherited == "dim" || inherited == "focus" || inherited == "down") {
 			return inherited
 		}
 		return s
@@ -495,7 +566,8 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		}
 		p.opacity *= 1 - 0.55*math.Min(1, dimness)
 	}
-	if placed {
+	if placed && !(p.drawingIso && e == p.iso) {
+		p.treeLink(e, r, lk, held, ap)
 		p.tableParts(e, r, lk, state)
 		if v, ok := e.Computed["sides"]; ok {
 			p.stroke(sidesPath(r, v.Value), lk.line, lk.dash)
@@ -507,6 +579,12 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		p.codePanel(e, r, lk, ap)
 	case kind == "arrow":
 		p.arrow(e, r, lk)
+	case kind == "meter":
+		p.meter(e, r, lk)
+	case kind == "badge":
+		p.badge(e, r, lk)
+	case kind == "timer":
+		p.timer(e, r, lk)
 	case e.Array != nil:
 		p.arrayBlock(e, r, lk, ap)
 	case e.Chart != nil:
@@ -555,13 +633,14 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		}
 	}
 	pass := inherited
-	if state == "dim" || state == "focus" {
+	if state == "dim" || state == "focus" || state == "down" {
 		pass = state
 	}
 	for _, ch := range e.Children {
-		if ch.Edge == nil {
-			p.element(ch, pass, opacity, rise)
+		if ch.Edge != nil || p.drawingIso && e == p.iso && layout.TreeOf(ch) != nil && ch.Kind() != "badge" {
+			continue
 		}
+		p.element(ch, pass, opacity, rise)
 	}
 }
 
@@ -795,13 +874,30 @@ func (p *painter) edge(sc *c.Scene, e *c.Element) {
 			ends = math.Min(ends, p.fadeWithin(els[0], scope))
 		}
 	}
-	ap.Opacity *= ends
+	ap.Opacity *= ends * p.dimAll
 	if ap.Opacity <= 0.002 {
 		return
 	}
 	lk := p.blend(ap.From, ap.State, ap.Mix)
 	cl := lk.line
 	dashed := e.Edge.Op == "..>" || e.Edge.Op == ".." || lk.dash
+	for _, els := range [][]*c.Element{from, to} {
+		if len(els) == 0 {
+			continue
+		}
+		ea := p.mo.Look(els[0])
+		down := 0.0
+		if ea.State == "down" {
+			down += ea.Mix
+		}
+		if ea.From == "down" {
+			down += 1 - ea.Mix
+		}
+		if down > 0 {
+			cl = lerpColor(cl, p.s.toneCol("bad"), math.Min(1, down)*.85)
+			dashed = dashed || down > .5
+		}
+	}
 	head := e.Edge.Op != "--" && e.Edge.Op != ".."
 	p.m = p.view
 	if g, ok := p.glideOf(e, sc); ok {
@@ -880,8 +976,14 @@ func (p *painter) packet(sc *c.Scene, pk motion.Packet) {
 			x := pts[i][0] + (pts[i+1][0]-pts[i][0])*f
 			y := pts[i][1] + (pts[i+1][1]-pts[i][1])*f
 			p.m = p.view
-			p.opacity = math.Min(1, math.Min(pk.Progress, 1-pk.Progress)*8)
-			p.fill(circle(x, y, 4), p.s.col("hi"))
+			p.opacity = pk.Opacity * p.dimAll
+			cl, rad := p.s.col("hi"), 4.0
+			if pk.Ping {
+				cl, rad = p.s.col("ink-dim"), 3.5
+			}
+			cl = lerpColor(cl, p.s.toneCol("good"), pk.Good)
+			cl = lerpColor(cl, p.s.toneCol("bad"), pk.Fail)
+			p.fill(circle(x, y+pk.Fall, rad+pk.Good*.8), cl)
 			return
 		}
 		want -= seg
@@ -1402,4 +1504,175 @@ func (p *painter) fadeWithin(el, scope *c.Element) float64 {
 		f *= p.mo.Look(x).Opacity
 	}
 	return f
+}
+
+// treeLink draws the curved line from a tree node's parent down to it. It
+// draws in as the node appears and takes the node's look, so a walk or a
+// failure shows on the line into the node too.
+func (p *painter) treeLink(e *c.Element, r layout.Rect, lk look, held float64, ap motion.Appearance) {
+	par := e.ParentElement()
+	if par == nil || par.Kind() == "tree" || layout.TreeOf(e) == nil {
+		return
+	}
+	pr, ok := p.lay.Boxes[par]
+	if !ok {
+		return
+	}
+	x0, y0 := pr.CX(), pr.Bottom()
+	x1, y1 := r.CX(), r.Y
+	m := (y0 + y1) / 2
+	saved, savedDraw := p.opacity, p.draw
+	p.opacity = held
+	p.draw = math.Min(1, ap.Opacity*1.6) * ap.Draw
+	line := lk.line
+	if ap.State == "rest" && ap.From == "rest" {
+		line = p.s.col("line-1")
+	}
+	p.stroke(fmt.Sprintf("M%g %gC%g %g %g %g %g %g", x0, y0, x0, m, x1, m, x1, y1), line, lk.dash)
+	p.opacity, p.draw = saved, savedDraw
+}
+
+// meterValue is a meter's value now: a number, moving smoothly from the
+// old value to the new one while a set step changes it.
+func (p *painter) meterValue(e *c.Element) float64 {
+	num := func(s string) float64 {
+		f, _ := strconv.ParseFloat(strings.TrimSpace(layout.Plain(s)), 64)
+		return f
+	}
+	now := e.Text
+	if t, ok := p.lay.Text[e]; ok {
+		now = t
+	}
+	v := num(now)
+	if mix := p.lay.TextMix; mix > 0 && mix < 1 {
+		was := e.Text
+		if t, ok := p.lay.TextWas[e]; ok {
+			was = t
+		}
+		w := num(was)
+		v = w + (v-w)*motion.Ease(mix)
+	}
+	return v
+}
+
+// meter draws slots (or a bar) filled up to its value; a slot being
+// filled or emptied is partly filled.
+func (p *painter) meter(e *c.Element, r layout.Rect, lk look) {
+	v := p.meterValue(e)
+	n := math.Max(1, numProp(e, "max", 5))
+	on, off := lk.text, p.s.col("line-0")
+	p.draw = 1
+	if str(e, "kind") == "bar" {
+		p.fill(rr(r, r.H/2), off)
+		f := math.Max(0, math.Min(1, v/n))
+		if f > 0 {
+			p.fill(rr(layout.Rect{X: r.X, Y: r.Y, W: r.W * f, H: r.H}, r.H/2), on)
+		}
+		return
+	}
+	for i := 0; i < int(n); i++ {
+		x := r.X + float64(i)*(layout.MeterSlot+layout.MeterGap)
+		sl := layout.Rect{X: x, Y: r.Y, W: layout.MeterSlot, H: layout.MeterSlot}
+		p.stroke(rr(sl, 3), lk.line, false)
+		if f := math.Max(0, math.Min(1, v-float64(i))); f > 0 {
+			p.fill(rr(sl, 3), alpha(on, f))
+		}
+	}
+}
+
+// badge draws a small pill with its text.
+func (p *painter) badge(e *c.Element, r layout.Rect, lk look) {
+	p.draw = 1
+	p.fill(rr(r, r.H/2), p.s.col("bg"))
+	p.stroke(rr(r, r.H/2), lk.line, false)
+	t := p.opt.Type["label"]
+	p.runs(e.Text, r.CX(), r.CY()+t.Size*0.36, t, lk.text, p.s.col("hi"), render.Middle)
+}
+
+// timer draws a ring that empties as its play step runs, with its text
+// beside it.
+func (p *painter) timer(e *c.Element, r layout.Rect, lk look) {
+	rad := r.H / 2
+	cx, cy := r.X+rad, r.Y+rad
+	left := 1.0
+	if pos, ok := p.mo.Playhead(e); ok {
+		left = 1 - pos
+	}
+	p.draw = 1
+	p.stroke(circle(cx, cy, rad-1), p.s.col("line-0"), false)
+	if left > 0.001 {
+		a := 2 * math.Pi * left
+		x1, y1 := cx+(rad-1)*math.Sin(a), cy-(rad-1)*math.Cos(a)
+		large := 0
+		if left > 0.5 {
+			large = 1
+		}
+		if left >= 0.999 {
+			p.stroke(circle(cx, cy, rad-1), lk.line, false)
+		} else {
+			p.stroke(fmt.Sprintf("M%g %gA%g %g 0 %d 1 %g %g", cx, cy-rad+1, rad-1, rad-1, large, x1, y1), lk.line, false)
+		}
+	}
+	if e.Text != "" {
+		t := p.opt.Type["label"]
+		p.runs(e.Text, r.X+2*rad+10, cy+t.Size*0.36, t, lk.text, p.s.col("hi"), render.Start)
+	}
+}
+
+func numProp(e *c.Element, key string, def float64) float64 {
+	if v, ok := e.Computed[key]; ok {
+		if f, err := strconv.ParseFloat(v.Value, 64); err == nil {
+			return f
+		}
+	}
+	return def
+}
+
+func apply(m render.Affine, x, y float64) (float64, float64) {
+	return m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]
+}
+
+func inAside(e *c.Element) bool {
+	for x := e; x != nil; x = x.ParentElement() {
+		if x.Kind() == "aside" {
+			return true
+		}
+	}
+	return false
+}
+
+// isolated draws the isolated element lifted out to its spotlight, and,
+// over a dimmed backdrop, a dashed outline where it came from.
+func (p *painter) isolated(iso *motion.Isolation, f float64, backView, plainView, base render.Affine, scale float64, area layout.Rect) {
+	e := iso.El
+	r, ok := p.lay.Boxes[e]
+	if !ok || r.W <= 0 {
+		return
+	}
+	round := 8.0
+	if e.Kind() == "circle" {
+		round = r.W / 2
+	}
+	if iso.Backdrop != "hide" {
+		p.view, p.m = backView, backView
+		p.opacity, p.draw = 0.75*f, 1
+		p.stroke(rr(r, round), p.s.toneCol("info"), true)
+	}
+	ox, oy := apply(plainView, r.CX(), r.CY())
+	spot := layout.SpotRegion(area, iso.Layout)
+	sx, sy := spot.CX()*scale, spot.CY()*scale
+	zs := plainView.Scale()
+	k := math.Min(spot.W*0.62*scale/(r.W*zs), spot.H*0.62*scale/(r.H*zs))
+	k = math.Max(1, math.Min(k, 2.6))
+	kk := 1 + (k-1)*f
+	g := render.Translate(ox+(sx-ox)*f, oy+(sy-oy)*f).Mul(render.Affine{kk, 0, 0, kk, 0, 0}).Mul(render.Translate(-ox, -oy))
+	p.view = g.Mul(plainView)
+	p.m = p.view
+	held := 1.0
+	for x := e.ParentElement(); x != nil; x = x.ParentElement() {
+		held *= p.mo.Look(x).Opacity
+	}
+	p.drawingIso, p.dimAll = true, 1
+	p.element(e, "rest", held, 0)
+	p.drawingIso = false
 }

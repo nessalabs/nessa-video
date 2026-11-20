@@ -346,7 +346,7 @@ scene s
 
 func TestThemePacks(t *testing.T) {
 	files := map[string]string{
-		"themes/brand/theme.reel": "extends hairline\ntokens\n  line-2 #FF5A5F\nstyle\n  box state=focus\ndefine badge\n  box #b\n",
+		"themes/brand/theme.reel": "extends hairline\ntokens\n  line-2 #FF5A5F\nstyle\n  box state=focus\ndefine pill\n  box #b\n",
 		"themes/loop/theme.reel":  "extends loop\n",
 		"themes/bad/theme.reel":   "tokens\n  bg #12\nscene x\n",
 	}
@@ -357,7 +357,7 @@ func TestThemePacks(t *testing.T) {
 		return nil, os.ErrNotExist
 	}}
 
-	res := ScriptWith("video \"t\"\n  theme brand\ntokens\n  hi #FFFFFF\nscene s\n  badge #x\n  laptop #l\n", opt)
+	res := ScriptWith("video \"t\"\n  theme brand\ntokens\n  hi #FFFFFF\nscene s\n  pill #x\n  laptop #l\n", opt)
 	if len(res.Diags) > 0 {
 		t.Fatalf("diags: %v", res.Diags)
 	}

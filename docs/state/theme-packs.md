@@ -53,7 +53,8 @@ define server units=3     # components built from primitives
   with a slot for your processes, and a label.
 - **Collections** are components too, built on three primitives the engine
   provides: a container with `flow=live` (and `sides=` to draw some of its
-  edges), the `arrow` shape, `table`, and connectors that reach every
+  edges), the `arrow` shape, `table`, `tree`, `meter`, `badge`, `timer`,
+  the down state, and connectors that reach every
   element their end matches. Hairline defines `node` (a value with an
   arrow to the next), `cell`, `block` (square cornered), `list` (head,
   nodes, null), `queue` (front and back), `lifo` (a stack: an open-topped

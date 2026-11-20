@@ -149,3 +149,94 @@ scene one
 		t.Fatal("new row's cells should line up too")
 	}
 }
+
+// A binary tree keeps every node where it is when a later one is shown,
+// puts left children left and right children right, and a lone child
+// with side=right on the right.
+func TestTreeStaysPut(t *testing.T) {
+	s, p, sc := liveScene(t, `video "t"
+scene one
+  tree #t kind=binary
+    circle #a "50"
+      circle #b "30"
+      circle #c "70"
+        circle #d "90" side=right
+  show #d
+`)
+	lay := s.Layouts(p)[sc]
+	tl := p.Scenes[0].Timeline()
+	before, after := lay.At(0), lay.At(tl[0].Start+tl[0].Dur+.01)
+	for _, id := range []string{"a", "b", "c", "d"} {
+		if before.Boxes[byID(sc, id)] != after.Boxes[byID(sc, id)] {
+			t.Fatalf("#%s moved when #d was shown", id)
+		}
+	}
+	a, b, c, d := before.Boxes[byID(sc, "a")], before.Boxes[byID(sc, "b")], before.Boxes[byID(sc, "c")], before.Boxes[byID(sc, "d")]
+	if !(b.CX() < a.CX() && a.CX() < c.CX() && c.CX() < d.CX() && d.Y > c.Y && c.Y > a.Y) {
+		t.Fatalf("binary positions wrong: a=%v b=%v c=%v d=%v", a, b, c, d)
+	}
+}
+
+// An isolate step lifts its element out until the return step brings it
+// back, and its aside appears only in between.
+func TestIsolateAndReturn(t *testing.T) {
+	_, p, sc := liveScene(t, `video "t"
+scene one
+  row
+    box #a "a"
+    box #b "b"
+  aside #why
+    p #note "about a"
+  isolate #a aside=#why
+  wait 1s
+  return #a
+`)
+	sp := p.Scenes[0]
+	tl := sp.Timeline()
+	iso, ret := tl[0], tl[2]
+	if _, f := sp.At(iso.Start - .05).Isolation(); f != 0 {
+		t.Fatal("isolated before the isolate step")
+	}
+	if e, f := sp.At(iso.Start + iso.Dur).Isolation(); e == nil || f < .99 || e.El != byID(sc, "a") {
+		t.Fatalf("not isolated after the step: %v %v", e, f)
+	}
+	note := byID(sc, "note")
+	if sp.At(iso.Start-.05).Look(note).Opacity > 0 || sp.At(iso.Start+iso.Dur+.5).Look(note).Opacity < .99 {
+		t.Fatal("the aside should appear with the isolate step")
+	}
+	if e, _ := sp.At(ret.Start + ret.Dur + .05).Isolation(); e != nil {
+		t.Fatal("still isolated after the return")
+	}
+	if sp.At(ret.Start+ret.Dur).Look(note).Opacity > 0.01 {
+		t.Fatal("the aside should leave on return")
+	}
+}
+
+// A ping to a failed element turns red as it arrives; one to a healthy
+// element turns green. fail puts the element in the down state.
+func TestPingAndFail(t *testing.T) {
+	_, p, sc := liveScene(t, `video "t"
+scene one
+  row gap=80
+    box #lb "lb"
+    col #pool
+      box #a "a"
+      box #b "b"
+  #lb -> #pool>*
+  fail #b
+  ping #lb to=#a
+  ping #lb to=#b
+`)
+	sp := p.Scenes[0]
+	tl := sp.Timeline()
+	if st := sp.At(tl[0].Start + tl[0].Dur).Look(byID(sc, "b")).State; st != "down" {
+		t.Fatalf("fail should put #b down, got %q", st)
+	}
+	end := func(i int) []motion.Packet { return sp.At(tl[i].Start + tl[i].Dur*.98).Packets() }
+	if pk := end(1); len(pk) != 1 || pk[0].Good < .9 || pk[0].Fail > 0 {
+		t.Fatalf("ping to a healthy element should turn green: %+v", pk)
+	}
+	if pk := end(2); len(pk) != 1 || pk[0].Fail < .9 {
+		t.Fatalf("ping to a down element should turn red: %+v", pk)
+	}
+}

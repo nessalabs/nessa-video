@@ -160,19 +160,52 @@ func (m Moment) Caption() (string, float64) {
 	return text, op
 }
 
-// Packet is a dot travelling along a connector.
+// Packet is a dot travelling along a connector. Opacity fades it in and
+// out; Fail (0 to 1) turns it red, Good (0 to 1) green; Fall drops it
+// below the line once it is refused; Ping makes it a smaller dot.
 type Packet struct {
-	Edge     *c.Element
-	Progress float64
+	Edge              *c.Element
+	Progress, Opacity float64
+	Fail, Good, Fall  float64
+	Ping              bool
 }
 
 // Packets returns the packets in flight.
 func (m Moment) Packets() []Packet {
 	var out []Packet
 	for _, s := range m.plan.sends {
-		if m.T >= s.Start && m.T <= s.Start+s.Dur {
-			out = append(out, Packet{Edge: s.Edge, Progress: Ease((m.T - s.Start) / s.Dur)})
+		t := m.T - s.Start
+		if t < 0 {
+			continue
 		}
+		pk := Packet{Edge: s.Edge, Ping: s.Ping, Opacity: 1}
+		edge := func(p float64) float64 { return math.Min(1, math.Min(p, 1-p)*8) }
+		switch {
+		case t <= s.Dur:
+			pk.Progress = Ease(t / s.Dur)
+			pk.Opacity = math.Min(1, pk.Progress*8)
+			if !s.Reply && !s.Drop {
+				pk.Opacity = edge(pk.Progress)
+			}
+			if s.Ping {
+				f := clamp((t/s.Dur - .5) / .5)
+				f = f * f * (3 - 2*f)
+				if s.OK {
+					pk.Good = f
+				} else {
+					pk.Fail = f
+				}
+			}
+		case s.Drop && t <= s.Dur+.5:
+			f := (t - s.Dur) / .5
+			pk.Progress, pk.Fail, pk.Fall, pk.Opacity = 1, math.Min(1, f*3), Ease(f)*14, 1-Ease(f)
+		case s.Reply && t > s.Dur+s.Hold && t <= 2*s.Dur+s.Hold:
+			pk.Progress = 1 - Ease((t-s.Dur-s.Hold)/s.Dur)
+			pk.Opacity = math.Min(1, math.Min(1-pk.Progress, pk.Progress)*8)
+		default:
+			continue
+		}
+		out = append(out, pk)
 	}
 	return out
 }
@@ -372,3 +405,51 @@ const GlideTime = 0.7
 // Glide returns how far carried elements have moved from where the
 // previous scene left them (0) to their places in this scene (1).
 func (m Moment) Glide() float64 { return Ease(clamp(m.T / GlideTime)) }
+
+// Isolation returns the isolation in effect and how far its element has
+// lifted out (0 in its place, 1 in the spotlight), or nil.
+func (m Moment) Isolation() (*Isolation, float64) {
+	for i := range m.plan.isos {
+		iso := &m.plan.isos[i]
+		if m.T < iso.Start {
+			continue
+		}
+		if m.T < iso.Back {
+			return iso, Ease(clamp((m.T - iso.Start) / iso.Dur))
+		}
+		if m.T < iso.Back+iso.BackDur {
+			return iso, 1 - Ease(clamp((m.T-iso.Back)/iso.BackDur))
+		}
+	}
+	return nil, 0
+}
+
+// Flying returns the elements flying between their place and another's
+// at this moment, with how far they are towards the other (1 there, 0 in
+// their own place).
+func (m Moment) Flying() map[*c.Element]FlyAt {
+	var out map[*c.Element]FlyAt
+	for e, fl := range m.plan.flys {
+		for _, f := range fl {
+			if m.T < f.Start || m.T > f.Start+f.Dur {
+				continue
+			}
+			p := Ease(clamp((m.T - f.Start) / f.Dur))
+			w := 1 - p
+			if f.Out {
+				w = p
+			}
+			if out == nil {
+				out = map[*c.Element]FlyAt{}
+			}
+			out[e] = FlyAt{Src: f.Src, W: w}
+		}
+	}
+	return out
+}
+
+// FlyAt is a flying element's other place and how near to it it is.
+type FlyAt struct {
+	Src *c.Element
+	W   float64
+}
