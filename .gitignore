@@ -7,3 +7,4 @@
 
 # Phonon wrapper build output
 internal/voice/phonon/native/target/
+internal/voice/phonon/bundle/

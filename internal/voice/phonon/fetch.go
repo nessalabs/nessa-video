@@ -2,9 +2,10 @@
 // (huggingface.co/gradium/phonon-31m-en, Apache-2.0), run on the CPU by a
 // small Rust wrapper around the ptts runtime that cgo links into reel.
 //
-// The model is not in the binary. The first narrated render downloads the
-// pinned checkpoint (about 65 MB) and the chosen voice into the cache, and
-// after that everything runs offline. model= on the voice line points at a
+// Release builds carry the pinned checkpoint and the Harper voice inside
+// the binary (see bundle.go) and copy them into the cache on first use.
+// Other builds, and other voices, download them into the cache on the
+// first narrated render, and after that everything runs offline. model= on the voice line points at a
 // checkpoint folder of your own instead.
 package phonon
 
@@ -69,6 +70,9 @@ func (f Fetcher) client() *http.Client {
 // Ensure makes sure dir holds the checkpoint and, when voice is not empty,
 // that voice, and returns the voice's name as the runtime knows it.
 func (f Fetcher) Ensure(ctx context.Context, dir, voice string) (string, error) {
+	if err := unbundle(dir); err != nil {
+		return "", err
+	}
 	for _, name := range modelFiles {
 		if err := f.get(ctx, ModelRepo, ModelRev, name, filepath.Join(dir, name)); err != nil {
 			return "", err

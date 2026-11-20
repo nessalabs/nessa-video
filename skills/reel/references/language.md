@@ -6,7 +6,7 @@
 video "PR 482 · one refresh per key"
   size 1920x1080  fps 30          # 1080x1920 for phones
   theme hairline                  # default; or a folder such as themes/brand
-  voice phonon Harper             # optional narration, local; or: voice elevenlabs VOICE_ID (key from ELEVENLABS_API_KEY or .env)
+  voice phonon                    # optional narration, local, Harper unless named; or: voice elevenlabs VOICE_ID (key from ELEVENLABS_API_KEY or .env)
 
 tokens                            # optional: override theme tokens
   line-2 #D4D7DE

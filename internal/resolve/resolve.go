@@ -197,6 +197,10 @@ func (r *resolver) video(v *c.Video, n *script.Node) {
 	}
 }
 
+// phononDefault is the voice `voice phonon` speaks with when it names
+// none; release builds carry it, so it needs no download.
+const phononDefault = "Harper"
+
 // voice reads `voice ENGINE ID model=…`.
 func (r *resolver) voice(v *c.Video, n *script.Node) {
 	if len(n.Args) == 0 {
@@ -239,6 +243,9 @@ func (r *resolver) voice(v *c.Video, n *script.Node) {
 		default:
 			r.diags.Errorf(p.Pos, "voice takes model= stability= similarity= style= speed= temperature=", "unknown voice setting %q", p.Key)
 		}
+	}
+	if eng == "phonon" && spec.ID == "" && spec.Model == "" {
+		spec.ID = phononDefault
 	}
 	v.Voice = spec
 }

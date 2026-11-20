@@ -21,8 +21,8 @@ checks it against the release's checksums and installs `reel` into
 `/usr/local/bin` (or `~/.local/bin`). `REEL_VERSION=v0.1.0` picks a version
 and `REEL_DIR=…` a folder. Or download a `.tar.gz` from the releases page;
 on macOS, a binary downloaded in a browser needs
-`xattr -d com.apple.quarantine reel` before it runs. The local voice model
-downloads on first use.
+`xattr -d com.apple.quarantine reel` before it runs. The binary carries a
+local voice (`voice phonon`), so narration works offline with no account.
 
 Releases are built by [the release workflow](.github/workflows/release.yml)
 when a `v*` tag is pushed.

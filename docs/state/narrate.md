@@ -10,6 +10,8 @@ sources:
   - internal/voice/elevenlabs/elevenlabs.go
   - internal/voice/phonon/fetch.go
   - internal/voice/phonon/phonon.go
+  - internal/voice/phonon/bundle.go
+  - Makefile
   - internal/voice/phonon/native/src/lib.rs
   - internal/encode/aac/aac.go
   - internal/encode/mp4/mp4.go
@@ -71,17 +73,21 @@ useful for tests.
 
 ## Local voice
 
-`voice phonon Harper` narrates on this machine with Gradium's Phonon 31M
+`voice phonon` narrates on this machine, in the Harper voice unless the
+line names another (`voice phonon Easton`). It uses Gradium's Phonon 31M
 English model (Apache-2.0): no account, no key, no network after the first
 use, and no cost per line. The runtime (ptts, MIT or Apache-2.0) is
 compiled into reel by a small Rust wrapper in
 `internal/voice/phonon/native`, which `make build` builds with cargo and
 links statically, adding about 8 MB to the binary.
 
-The model is not in the binary. The first narrated render downloads the
-pinned checkpoint, about 65 MB, and the chosen voice from Hugging Face into
-the cache (`~/Library/Caches/reel/phonon` on macOS); after that it runs
-offline. The catalog has about 100 voices; an unknown name lists the
+`make build` and the release binaries carry the pinned checkpoint (62 MB)
+and the Harper voice inside the binary, which makes it about 93 MB; the
+first narrated render copies them into the cache
+(`~/Library/Caches/reel/phonon` on macOS), so narration works offline from
+the start. Other voices, about 250 KB each, download from Hugging Face the
+first time a script names them. `make build BUNDLE=0` leaves the model out
+and downloads it on first use instead. The catalog has about 100 voices; an unknown name lists the
 English ones. `model=/path/to/folder` uses a checkpoint folder of your own
 instead, and `temperature=` (0 to 2) varies the delivery. The same line is
 always spoken the same way, so cached and fresh renders match. Phonon
