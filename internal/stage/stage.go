@@ -400,7 +400,8 @@ type painter struct {
 	drawingIso   bool
 	drawingAside bool
 	drawingCarry bool
-	dimAll       float64 // how much the backdrop shows while something is isolated
+	dimAll       float64      // how much the backdrop shows while something is isolated
+	isoBox       *layout.Rect // an isolated plot's box on its way to the spotlight
 }
 
 func (p *painter) stroke(d string, cl color.NRGBA, dash bool) {
@@ -620,7 +621,7 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 	}
 
 	// dim fades a block's contents too, not only its outline
-	if e.Code != nil || e.Array != nil || e.Chart != nil || e.Timeline != nil || e.Sequence != nil || e.Git != nil || kind == "math" {
+	if e.Code != nil || e.Array != nil || e.Chart != nil || e.Timeline != nil || e.Sequence != nil || e.Git != nil || e.Plot != nil || kind == "math" {
 		dimness := 0.0
 		if eff(ap.State) == "dim" {
 			dimness += ap.Mix
@@ -663,12 +664,14 @@ func (p *painter) element(e *c.Element, inherited string, opacity, rise float64)
 		p.timelineBlock(e, r, lk, ap)
 	case e.Git != nil:
 		p.gitBlock(e, r, ap)
+	case e.Plot != nil:
+		p.plotBlock(e, r, ap)
 	case e.Sequence != nil:
 		p.sequenceBlock(e, r, lk, ap)
 	case kind == "math":
 		p.mathBlock(e, r, textColor, ap)
 	}
-	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && e.Sequence == nil && e.Git == nil && kind != "math" {
+	if placed && e.Edge == nil && e.Code == nil && e.Array == nil && e.Chart == nil && e.Timeline == nil && e.Sequence == nil && e.Git == nil && e.Plot == nil && kind != "math" {
 		switch kind {
 		case "box", "card", "stack", "decision", "store", "circle":
 			p.shape(e, r, lk, ap)
@@ -1791,13 +1794,19 @@ func (p *painter) isolated(iso *motion.Isolation, f float64, backView, plainView
 	if e.Kind() == "circle" {
 		round = r.W / 2
 	}
-	if iso.Backdrop != "hide" {
+	// a plot moves its own box rather than lifting a copy, and its old
+	// place often lies under the aside: no outline for it
+	if iso.Backdrop != "hide" && e.Plot == nil {
 		p.view, p.m = backView, backView
 		p.opacity, p.draw = 0.75*f, 1
 		p.stroke(rr(r, round), p.s.toneCol("info"), true)
 	}
-	ox, oy := apply(plainView, r.CX(), r.CY())
 	spot := layout.SpotRegion(area, iso.Layout)
+	if e.Plot != nil {
+		p.isolatedPlot(e, r, f, spot, plainView, scale)
+		return
+	}
+	ox, oy := apply(plainView, r.CX(), r.CY())
 	sx, sy := spot.CX()*scale, spot.CY()*scale
 	zs := plainView.Scale()
 	k := math.Min(spot.W*0.62*scale/(r.W*zs), spot.H*0.62*scale/(r.H*zs))

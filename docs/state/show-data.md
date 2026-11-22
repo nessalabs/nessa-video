@@ -1,6 +1,6 @@
 ---
 id: show-data
-title: Show arrays, charts, timelines, diagrams and maths
+title: Show arrays, charts, timelines, diagrams, maths and plots
 kind: feature
 status: implemented
 summary: Data blocks draw algorithms, numbers, timing, flows and formulas in the hairline look, with steps to animate them.
@@ -17,11 +17,20 @@ sources:
   - internal/render/canvas/canvas.go
   - examples/data-blocks.reel
   - examples/data-motion.reel
+  - internal/plot/expr.go
+  - internal/plot/special.go
+  - internal/plot/sample.go
+  - internal/plot/view.go
+  - internal/composition/plot.go
+  - internal/resolve/plot.go
+  - internal/motion/plot.go
+  - internal/stage/plot.go
+  - examples/plot.reel
 diagramLinks:
   Steps: play-a-scene
 ---
 
-# Show arrays, charts, timelines, diagrams and maths
+# Show arrays, charts, timelines, diagrams, maths and plots
 
 These blocks cover what code review videos explain besides code: how an
 algorithm moves through data, what changed in the numbers, what happens when,
@@ -196,9 +205,106 @@ outlines, so they take theme colours and fade like text. Backslashes on a
 `math` line are left for TeX. Plain TeX is supported, plus `\mathrm`, `\text`,
 `\mathbf`, `\mathit`, `\log`, `\ln`, `\max` and `\min`.
 
+## Plots
+
+```text
+plot #p x=0..4pi y=-1..1 a=0
+  y = sin(x) + a*sin(3x)/3
+  curve x=sin(3t) y=sin(2t) t=0..2pi
+  polar r = 1 + cos(theta) theta=0..2pi
+  zeta(1/2 + i*t) t=0..30 marks=zeros
+  point (1, 0.8) "peak"
+play #p
+set #p a=1 for=2.5s
+```
+
+A `plot` draws curves from expressions on hairline axes. Its line takes
+the ranges the axes show (`x=`, `y=`; ends may use `pi`, `e` and
+fractions, and an axis whose range names `pi` is labelled in multiples
+of π), `square=true` for one unit as long on both axes, and parameters:
+any other `name=value` (`a=0`) that curves can read and `set` can change.
+A parameter cannot share its name with a property (`w`, `h`, `r` …), a
+curve parameter (`x`, `t`, `theta`) or a function. Each indented line is
+a curve or a point:
+
+- `y = EXPR` is a function of x over the plot's x range (`x=a..b` after
+  it limits it).
+- `curve x=EXPR y=EXPR t=a..b` is parametric; write each expression
+  without spaces or in quotes.
+- `polar r = EXPR theta=a..b` (0..2π by default).
+- Any other expression is a complex function of the parameter whose
+  range follows it (`t=0..30`), drawn as (Re, Im).
+- `point (x, y) "label"` is a dot with a label.
+
+Expressions are parsed by a small Pratt parser and evaluated in complex
+numbers: `+ - * / ^` (`**` too), unary minus, implicit products (`2x`,
+`3t`, `2pi`, `(x+1)(x-1)`), the functions `sin cos tan asin acos atan exp
+log ln sqrt abs floor min max re im arg conj gamma zeta` and the
+constants `pi e i`. A real curve whose value turns complex (`sqrt(x)` left
+of 0) is undefined there. `zeta` uses Euler–Maclaurin summation (N = 20,
+Bernoulli terms to B14; accurate to about 1e-9 for |Im s| ≤ 40) and the
+functional equation left of Re s = 0; `gamma` uses Lanczos.
+
+Curves are sampled adaptively in screen space: segments longer than 6 px
+or bending more than a third of a pixel from their chord are split, up
+to ten times; a segment that never settles (an asymptote like tan's or
+1/x's) or reaches an undefined point breaks the curve instead of drawing
+a vertical line. Curves are clipped to the axes' box.
+
+Look: hairline axes in the line colour through the origin (along the
+nearer edge when the origin is out of view), spanning the whole box;
+tick numbers in muted 11 px mono; the equations in mono at the top left;
+the first curve 2 px in the accent with round caps (others grey); amber
+for marks and notes.
+
+Steps:
+
+- `play #p` traces every curve from the start of its parameter to the
+  end, with a dot (accent, ringed in the ground colour) at the tip that
+  fades once the trace is done. The whole trace takes 4 s (`for=` sets
+  it); during a spoken line it takes the rest of the line. `play #p
+  to=t=14.13` (or `to=x=2`, naming the parameter of the first curve that
+  has it) traces up to that value and stops, the dot waiting at the tip;
+  the next `play #p` carries on, each taking its share of the 4 s.
+  Without a play step a plot traces itself in as it enters.
+- `set #p a=1 for=2.5s` eases a parameter (1.6 s by default); the curves
+  morph and a readout `a = 0.62` with steady digits shows at the top
+  right.
+- `marks=zeros` on a curve rings each place the trace passes through the
+  origin (for `y =`, each crossing of the x axis) in amber, with a pulse
+  as the tip arrives and a label `zero at t = 14.13` for the latest one.
+  Zeros are found at the parameters' starting values.
+- `note #p (0,0) "first zero"` (or `at=(0,0)`) pins an amber ring and
+  label to a place; the label sits on a backing in the ground colour, on
+  the first side of the point that keeps it inside the box and clear of
+  the tick numbers.
+- `zoom #p x=-.35..0.55 y=-.45..0.45` rescales the axes so that region
+  fills the box; `zoom #p` goes back. It is not a camera zoom: lines and
+  text keep their size. The view is a centre and a scale: the scale
+  moves on a log scale and the centre by w = (1 − k0/k)/(1 − k0/kZ), so
+  the zoom closes in on one fixed point and the target's centre travels
+  in a straight line to the middle, eased with smootherstep over 1.8 s.
+  A zoom that starts while another runs carries on from where it was.
+  Ticks come from candidate steps (… 2, 1, 0.5, 0.2, 0.1 …), each with
+  alpha clamp((step·k − 34)/36, 0, 1); a tick takes the largest alpha of
+  the steps it is a multiple of, so finer ticks fade in as room opens.
+  Labels follow the steps that nest (1, 0.5, 0.1 …) and need more room;
+  near the box's ends they fade out rather than pop.
+- `isolate #p aside=#why` moves the plot's own box into the spotlight and
+  lets it take the room there; the view keeps its centre and scale model,
+  so the axes gain or lose range smoothly instead of the drawing being
+  scaled. `return #p` glides it back.
+
+A plot carried into the next scene keeps its trace, parameters, zooms
+and notes.
+
 ## Known gaps
 
 - The maths engine adds about 7 MB to the binary.
+- Plot labels draw π, θ and ζ through the TeX engine (the bundled fonts
+  are Latin only), so those letters are in its italic face.
+- Zero marks are found once, at the parameters' starting values; a `set`
+  that moves the zeros does not move the marks.
 
 ## Git histories
 

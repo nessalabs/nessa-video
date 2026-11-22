@@ -77,6 +77,15 @@ Data moves too: "set #chart /checkout=240" eases a bar and counts its label,
 behind its playhead and "mark #tl span=orders" singles one out; a set on a
 table cell cross-fades in place and a shown row slides in, highlighted.
 
+Maths: a plot block draws curves from expressions and animates them:
+  plot #p x=0..4pi y=-1..1 a=0          (ranges, then parameters)
+    y = sin(x) + a*sin(3x)/3            (also: curve x=… y=… t=0..2pi,
+    zeta(1/2 + i*t) t=0..30 marks=zeros  polar r = …, point (1, 0.8) "peak")
+"play #p" traces the curves (to=t=14.13 stops part way), "set #p a=1" eases
+a parameter, "note #p (0,0) \"first zero\"" pins an amber note, "zoom #p
+x=-.5..0.5 y=-.5..0.5" rescales the axes toward a point ("zoom #p" goes back).
+See examples/plot.reel.
+
 Minimal script:
   video "What a cache does"
     voice phonon

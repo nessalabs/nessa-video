@@ -60,7 +60,7 @@ var EdgeOps = []string{"<->", "..>", "-->", "->", "-|", "~>", "--", ".."}
 
 // RawKinds take their indented body verbatim instead of parsing it.
 var RawKinds = map[string]bool{"terminal": true, "code": true, "diff": true, "math": true,
-	"chart": true, "timeline": true, "mermaid": true, "git": true}
+	"chart": true, "timeline": true, "mermaid": true, "git": true, "plot": true}
 
 type line struct {
 	no, indent int

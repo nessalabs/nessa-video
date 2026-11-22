@@ -25,6 +25,8 @@ func (r *resolver) block(e *c.Element, n *script.Node) {
 		r.mermaid(e, n)
 	case "git":
 		r.git(e, n)
+	case "plot":
+		r.plotBlock(e, n)
 	case "math":
 		if e.Text == "" && len(n.Raw) > 0 {
 			e.Text = strings.Join(n.Raw, " ")

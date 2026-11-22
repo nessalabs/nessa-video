@@ -303,6 +303,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					sp.marks[e] = append(sp.marks[e], last)
 				}
 				sp.carryData(prev, pe, e)
+				sp.carryPlot(prev, pe, e)
 			}
 		}
 	})
@@ -593,6 +594,10 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 					dur = math.Max(dur, (1-from)*float64(len(e.Git.Cmds))*.6)
 				}
 			}
+		}
+		if st.Verb == "play" {
+			inLine := line != nil && start >= line.start && start < line.start+line.speech
+			dur = sp.plotPlayDur(st, targets, dur, inLine)
 		}
 		dur = dataDur(st, targets, dur)
 		if v, ok := st.Lookup("for"); ok {
@@ -887,7 +892,7 @@ func planScene(sc *c.Scene, prev *ScenePlan, tm Timings) *ScenePlan {
 				}
 			}
 			showing = false
-		case "sort":
+		case "sort", "note", "zoom":
 			sp.planData(st, targets, start, dur)
 		case "set":
 			if sp.planData(st, targets, start, dur) {
@@ -1259,6 +1264,10 @@ type PlaySeg struct {
 // playTo turns a play step's to= into a playhead position: a count of rows
 // for a sequence diagram, a time for a timeline, else a fraction.
 func playTo(e *c.Element, v string) float64 {
+	if e.Plot != nil {
+		f, _ := e.Plot.Fraction(v)
+		return f
+	}
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		return 1

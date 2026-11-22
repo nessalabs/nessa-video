@@ -1,0 +1,51 @@
+video "Plots"
+  size 1920x1080  fps 30
+  voice silent
+
+scene damped
+  plot #d x=0..4pi y=-1..1
+    y = sin(x) * exp(-x/4)
+  say "A damped sine"
+  with play #d for=3s
+
+scene lissajous
+  clear
+  plot #l x=-1.2..1.2 y=-1.2..1.2 square=true
+    curve x=sin(3t) y=sin(2t) t=0..2pi
+  say "A Lissajous figure, traced in t"
+  with play #l for=3.5s
+
+scene morph
+  clear
+  plot #m x=0..2pi y=-1.5..1.5 a=0
+    y = sin(x) + a*sin(3x)/3 + a*sin(5x)/5
+  say "Add odd harmonics and a sine squares up"
+  with play #m for=2.5s
+  set #m a=1 for=2.5s
+  wait 0.5s
+  set #m a=0.4 for=1.5s
+
+scene zeros
+  clear
+  plot #z x=-2..3.5 y=-2..2 square=true
+    zeta(1/2 + i*t) t=0..30 marks=zeros
+  say "The zeta function along the critical line"
+  play #z for=7s
+
+scene critical
+  clear
+  plot #z x=-2..3.5 y=-2..2 square=true
+    zeta(1/2 + i*t) t=0..30
+  aside #why layout=left
+    label "On the critical line"
+    p "Every nontrivial zero found so far sits on Re(s) = ½"
+  say "Trace it until it first reaches the origin"
+  play #z to=t=14.13
+  note #z at=(0,0) "first zero"
+  isolate #z aside=#why
+  zoom #z x=-.35..0.55 y=-.45..0.45
+  say "Up close, the curve passes straight through zero"
+  return #z
+  zoom #z
+  say "and carries on toward the next one"
+  with play #z

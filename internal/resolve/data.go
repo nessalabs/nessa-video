@@ -23,8 +23,11 @@ func (r *resolver) checkData(s *c.Scene) {
 				continue
 			}
 			for _, e := range targets {
+				if e.Plot != nil {
+					continue // checkPlots reads parameters
+				}
 				if e.Chart == nil {
-					r.diags.Errorf(st.Pos, `use set #id "text" for text`, "set %s=… needs a chart; %s is a %s", data[0].Key, st.Target.Src, e.Kind())
+					r.diags.Errorf(st.Pos, `use set #id "text" for text`, "set %s=… needs a chart or a plot; %s is a %s", data[0].Key, st.Target.Src, e.Kind())
 					continue
 				}
 				for _, d := range data {

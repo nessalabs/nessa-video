@@ -658,6 +658,8 @@ func (e *engine) intrinsic(el *c.Element) (float64, float64) {
 			return 560, ChartHead + BarPitch*float64(len(el.Chart.Rows)) + 8
 		}
 		return 460, 300
+	case el.Plot != nil:
+		return PlotW, PlotH
 	case el.Timeline != nil:
 		h := 28 + LaneHeight*float64(len(el.Timeline.Lanes)) + AxisBand
 		if el.Timeline.Readout {
@@ -1486,6 +1488,9 @@ const MeterDot, MeterDotGap, MeterCaption = 5.0, 6.0, 24.0
 // Status sizes: the dot's width, the gap after it, and the countdown
 // ring's radius and its gap from the label.
 const StatusDot, StatusGap, StatusRing, StatusRingGap = 7.0, 8.0, 6.5, 10.0
+
+// PlotW and PlotH are a plot's size unless w= and h= say otherwise.
+const PlotW, PlotH = 720.0, 440.0
 
 // SpotRegion is where an isolated element goes for a layout: the left part
 // of the frame for left, the top for center, the right part for right.

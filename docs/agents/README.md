@@ -85,6 +85,7 @@ To check how a moment looks, render and pull frames with ffmpeg
 | `internal/layout` | sizes and places elements: rows, columns, grids, tables, trees, asides, flowcharts, live layout states |
 | `internal/motion` | plans steps over time: enters, exits, states, flow changes, `set`, narration timing |
 | `internal/stage` | turns a laid-out scene at a moment into a display list (shapes, text, connectors, blocks) |
+| `internal/plot` | the plot block's maths: expressions in complex numbers, gamma and zeta, adaptive sampling, the zoom view and ticks |
 | `internal/render` | the display list and the canvas rasterizer |
 | `internal/markup` | inline marks in text: `==bright==`, `__under__`, `{bad:tones}` |
 | `internal/source` | reads diffs and source files that videos show |
@@ -97,7 +98,7 @@ To check how a moment looks, render and pull frames with ffmpeg
 | `examples` | sample scripts |
 
 New building blocks go in as engine primitives that are generic
-(`flow=live`, `set`, `table`, `tree`, `meter`, `badge`, `timer`, `sides=`, `arrow`, connector fan-out, `send … reply|drop`, `ping`, `fail`/`recover`, `isolate`/`return`, `show … from=`, `move`, `send … carry=`, `git`, `status`, dot meters, two-lane `send … reply=` with `spend=`, `set … tone=`, `move … first`), with
+(`flow=live`, `set`, `table`, `tree`, `meter`, `badge`, `timer`, `sides=`, `arrow`, connector fan-out, `send … reply|drop`, `ping`, `fail`/`recover`, `isolate`/`return`, `show … from=`, `move`, `send … carry=`, `git`, `status`, dot meters, two-lane `send … reply=` with `spend=`, `set … tone=`, `move … first`, `plot` with `play`/`set`/`note`/`zoom`), with
 everyday structures (lists, queues, stacks, balancers, breakers, limiters, caches) written as theme
 `define`s on top of them, not as one-off layouts.
 

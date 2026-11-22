@@ -31,6 +31,7 @@ type dataPlan struct {
 	sets  []ChartSet
 	sorts []ChartSort
 	grow  *Anim // a chart's bars or lines growing in
+	plot  *plotPlan
 }
 
 // Timings of data motion, in seconds.
@@ -61,6 +62,9 @@ func (sp *ScenePlan) dataOf(e *c.Element) *dataPlan {
 // growTime is how long a chart's contents take to grow in once its frame
 // has drawn, including the marker where a line crosses its threshold.
 func growTime(e *c.Element) float64 {
+	if e.Plot != nil {
+		return PlotTrace
+	}
 	cb := e.Chart
 	if cb == nil {
 		return 0
@@ -78,8 +82,11 @@ func growTime(e *c.Element) float64 {
 // planGrow times a chart's contents growing in after its frame enters
 // with a, and returns when the element is done entering.
 func (sp *ScenePlan) planGrow(e *c.Element, a Anim) float64 {
-	if e.Chart == nil || math.IsInf(a.Start, 1) {
+	if e.Chart == nil && e.Plot == nil || math.IsInf(a.Start, 1) {
 		return a.end()
+	}
+	if e.Plot != nil && (sp.played(e) || len(e.Plot.Curves) == 0) {
+		return a.end() // a play step traces it
 	}
 	g := Anim{Mode: "grow", Start: a.Start + a.Dur*0.5, Dur: growTime(e)}
 	sp.dataOf(e).grow = &g
@@ -117,6 +124,9 @@ func (sp *ScenePlan) carryData(prev *ScenePlan, pe, e *c.Element) {
 // value over ChartSetTime, a sort slides, a cell cross-fades, a mark on a
 // timeline or chart eases, and a chart that is shown grows in.
 func dataDur(st c.Step, targets []*c.Element, dur float64) float64 {
+	if d := plotStepDur(st, targets, -1); d >= 0 {
+		return d
+	}
 	switch st.Verb {
 	case "set":
 		for _, e := range targets {
@@ -138,7 +148,7 @@ func dataDur(st c.Step, targets []*c.Element, dur float64) float64 {
 		}
 	case "show":
 		for _, e := range targets {
-			if e.Chart != nil {
+			if e.Chart != nil || e.Plot != nil {
 				dur = math.Max(dur, dur*0.5+growTime(e))
 			}
 		}
@@ -159,6 +169,9 @@ func inTable(e *c.Element) bool {
 // planData records a set on chart rows or a sort, and reports whether the
 // step was one.
 func (sp *ScenePlan) planData(st c.Step, targets []*c.Element, start, dur float64) bool {
+	if sp.planPlot(st, targets, start, dur) {
+		return true
+	}
 	switch st.Verb {
 	case "set":
 		data := c.DataDecls(st.Decls)

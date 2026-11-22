@@ -17,7 +17,7 @@ var Primitives = []string{
 var Layouts = []string{"row", "col", "grid", "table", "tree", "aside", "layer", "place"}
 
 // Blocks are content with their own input format.
-var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid", "math", "git"}
+var Blocks = []string{"diff", "terminal", "array", "chart", "timeline", "mermaid", "math", "git", "plot"}
 
 // Verbs are steps. They change what is on screen over time.
 var Verbs = []string{
@@ -26,7 +26,8 @@ var Verbs = []string{
 	"fail", "recover", // the down state
 	"isolate", "return", // sub-scenes
 	"camera", "send", "ping", "move", "type", "play", "walk", "swap", "mark", "ptr", "show", "set",
-	"sort", // charts
+	"sort",         // charts
+	"note", "zoom", // plots
 	"say", "wait", "hold",
 }
 
@@ -50,6 +51,7 @@ var Props = []string{
 	// system components: lanes, replies, spending, outlines, anchors
 	"lanes", "reply", "spend", "outline", "anchor", "unit", "idle",
 	"threshold", "cross", "row", // charts
+	"square", "marks", // plots
 }
 
 // IsVerb reports whether k names a step.
@@ -106,6 +108,7 @@ var KindProps = map[string]string{
 	"timeline": `unit=, indented lanes: label | 0-18 text | *18-22 strong; play fills spans behind the playhead; mark #tl span=NAME note="…" singles a span out in amber with a readout under the axis`,
 	"mermaid":  `reveal=steps (start empty; walk and show add parts), indented flowchart LR|TD or sequenceDiagram (participant, ->>, -->>, -x, Note, alt/else/opt/loop/par/end, autonumber)`,
 	"math":     `"TeX" size=`,
+	"plot":     `x=0..4pi y=-1..1 (ranges take pi, e and fractions) square=true (equal units) NAME=VALUE (a parameter, e.g. a=0); indented curves: y = EXPR, curve x=EXPR y=EXPR t=0..2pi, polar r = EXPR theta=0..2pi, a complex EXPR of t drawn as (Re, Im) with t=0..30, each with marks=zeros; point (1, 0.8) "label". play traces the curves (to=t=14.13 stops part way), set #p a=1 eases a parameter, note #p (0,0) "text" pins an amber note, zoom #p x=a..b y=c..d rescales the axes (zoom #p goes back)`,
 	"row":      `gap= align= justify= pad= dir= fit= flow=live (children not shown yet or gone take no room; the rest glide) sides=left,right,bottom (draw those edges; sides=all r=12 a rounded frame) anchor=true (connectors to the component holding it end here)`,
 	"col":      `gap= align= justify= pad= dir= fit= flow=live sides= anchor=true`,
 	"grid":     `cols= gap= flow=live`,

@@ -64,7 +64,11 @@ func (c *Canvas) path(d string) *canvas.Path {
 	if err != nil {
 		panic(err)
 	}
-	c.paths.Store(d, p)
+	// long paths are mostly curves traced anew each frame; caching them
+	// would only hold every frame's copy in memory
+	if len(d) < 4096 {
+		c.paths.Store(d, p)
+	}
 	return p
 }
 

@@ -114,6 +114,16 @@ for a chart, timeline or terminal; a timeline that shows order only takes
   one accent colour; a line chart with `threshold=` marks where it crosses.
   A timeline fills in behind `play`, and `mark #tl span=orders` singles out
   the slow part with a readout.
+- For mathematics, draw curves with a `plot` and move them: `plot #p
+  x=0..2pi y=-1.5..1.5 a=0` with `y = sin(x) + a*sin(3x)/3` under it,
+  then `play #p` traces it with a dot at the tip and `set #p a=1 for=2.5s`
+  morphs it while a readout counts. Parametric (`curve x=sin(3t)
+  y=sin(2t) t=0..2pi`), polar (`polar r = 1 + cos(theta)`) and complex
+  curves (`zeta(1/2 + i*t) t=0..30 marks=zeros`, drawn as (Re, Im)) work
+  the same. Stop a trace where the story pauses (`play #z to=t=14.13`),
+  pin an amber `note #z (0,0) "first zero"`, `isolate` the plot beside an
+  aside, `zoom #z x=-.35..0.55 y=-.45..0.45` to look closer, then `zoom
+  #z` back and `play #z` to finish.
 - For trees (search trees, heaps, file systems, org charts) use `tree`;
   write every node the story will need and `show` the ones added later,
   so nothing jumps. `walk #t n50 n70 n80` traces a search path.

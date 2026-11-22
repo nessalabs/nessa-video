@@ -562,6 +562,9 @@ func (r *resolver) step(n *script.Node) c.Step {
 		case "for", "stagger":
 			r.duration(p.Value, p.Pos, false)
 		case "at":
+			if n.Kind == "note" && strings.HasPrefix(p.Value, "(") {
+				break // note #p at=(0,0): a place on the plot, not a time
+			}
 			r.duration(p.Value, p.Pos, true)
 		case "exit":
 			r.oneOf(p.Value, p.Pos, c.EnterModes, "exit mode")
@@ -738,7 +741,7 @@ func (r *resolver) element(parent *c.Element, n *script.Node, inst *instance) {
 	switch n.Kind {
 	case "code", "diff":
 		r.codeBlock(e, n)
-	case "array", "chart", "timeline", "mermaid", "math", "git":
+	case "array", "chart", "timeline", "mermaid", "math", "git", "plot":
 		r.block(e, n)
 	}
 	parent.Append(e)
@@ -939,6 +942,9 @@ func (r *resolver) base(n *script.Node, inst *instance) *c.Element {
 		e.Body = n.Raw
 	}
 	for _, p := range n.Props {
+		if n.Kind == "plot" && (!c.IsProp(p.Key) || p.Key == "x" || p.Key == "y") {
+			continue // ranges and parameters; the plot block reads them
+		}
 		r.checkProp(p.Key, p.Pos, nil)
 		r.checkValue(p.Key, p.Value, p.Pos)
 		e.Inline = append(e.Inline, c.Decl{Key: p.Key, Value: p.Value, Pos: p.Pos})
@@ -1347,6 +1353,7 @@ func (r *resolver) validate(s *c.Scene) {
 		}
 	}
 	r.checkData(s)
+	r.checkPlots(s)
 }
 
 func uniq(xs []string) []string {
