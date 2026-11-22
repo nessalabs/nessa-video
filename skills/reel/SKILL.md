@@ -1,182 +1,140 @@
 ---
 name: reel
-description: Write a .reel script and render a short explainer video with the reel CLI. Use when asked to make a video, animation or visual walkthrough of a code change, pull request, algorithm, request flow or system design, or to update an existing .reel script.
+description: Write a .reel script and render a short explainer video with the reel CLI. Use when asked to make a video, animation or visual walkthrough of a code change, pull request, system design, algorithm, or incident analysis, or to update an existing .reel script.
 ---
 
 # reel
 
-reel turns a short text script into an explainer video from one binary.
-You write the script; `reel check` finds mistakes, `reel still` shows each
-scene as a picture, and `reel render` writes the MP4. Read
-[the language reference](references/language.md) before writing a script.
+reel turns a plain text script into a narrated explainer video from one binary.
+You write the `.reel` script; `reel check` catches mistakes and timing issues,
+`reel still` renders each scene as a PNG so you can inspect the layout, and
+`reel render` writes the MP4. Read [the language reference](references/language.md)
+for element and step syntax, and [explaining a change](references/explaining.md)
+for the cognitive-load rules behind these guidelines.
 
-## Plan the story first
+## How to tell an interactive-feeling story
 
-The video exists so a person understands the change with less effort than
-reading it. Explain with pictures of what the code does, not with the code.
-Read [explaining a change](references/explaining.md) for the research behind
-these rules. Read the diff and the code around it, then tell the story in
-this order, skipping a beat rather than padding it:
+A linear video feels interactive when the viewer is constantly predicting what
+will happen next and watching the system prove them right or wrong.
 
-1. Names: the two to four project-specific things the rest relies on, each
-   with a plain name and a one-line meaning. Skip generic ideas such as
-   what a cache is.
-2. Problem: one concrete case of what went wrong or was missing, and how the
-   system behaved before, as a diagram.
-3. Mechanism: the new behaviour, traced with one concrete example first
-   (real values moving through an array or a sequence), then the rule.
-   Reuse the before diagram's shape and highlight only what changed.
-4. Edge cases: only the ones the change handles or a reviewer would ask
-   about, each as a concrete input.
-5. Evidence: tests and numbers from the PR or a real run, as metrics or
-   cards.
+1. **Start with a hook, skip the glossary.** Open with the visible failure,
+   surprising behavior, or hard constraint in the first 5–10 seconds. Introduce
+   project-specific names only right before the viewer needs them.
+2. **Carry one concrete example through the whole video.** Pick one named
+   request, user, or record (like `order #42` or `req 1`) and follow that same
+   item from failure to fix to edge cases. Switching examples every scene breaks
+   continuity.
+3. **Use a predict → run → explain loop.** Before animating a failure or a
+   tricky case, pose the concrete question ("Two requests hit an empty cache at
+   once — what hits the database?"), pause a beat, run the animation so the
+   viewer watches it happen, then `zoom` or `isolate` to show why.
+4. **Reuse the same layout across scenes.** Leave out `clear` (or use
+   `clear keep="#id"`) when the story continues so elements glide into place
+   and the viewer can see what changed without relearning the diagram.
+5. **Stick to the source.** Never invent numbers, timestamps, latencies, or
+   test output. When a timeline only shows ordering, set `unit=none`.
 
-If the PR does two independent things, say so up front and give each its
-own short arc. Leave out renames, formatting and moved files.
+## Pick the arc for the job
 
-Say only what the source shows. Never invent numbers, timings or test output
-for a chart, timeline or terminal; a timeline that shows order only takes
-`unit=none`.
+Skip any beat that does not apply, and split a video if it tries to cover two
+unrelated topics. Aim for two to four minutes.
 
-## Show, then say
+### Code review / pull request
+1. **Hook:** Show the bug or missing behavior on one concrete input.
+2. **Before:** Animate how the old code handles that input and watch it fail.
+3. **Fix:** Keep the same diagram shape, highlight what changed, and replay the
+   exact same input through the new path.
+4. **Edge cases:** Run one or two tricky inputs a reviewer would ask about
+   (retries, restarts, empty state) on the same setup.
+5. **Evidence:** Show real test results or benchmark numbers as `metric` or
+   `card` blocks, noting where each number came from.
 
-- One idea per scene, at most about 45 spoken words. `reel check` warns past
-  that; split the scene.
-- Captions are key phrases of eight words or fewer. Put the full sentence in
-  `speak="…"`, never on screen.
-- Talk like a person, not a spec. Read the plain-language rules in
-  [explaining a change](references/explaining.md) before writing narration:
-  no code names aloud, at most two new terms per video, one idea per
-  sentence, subject first, everyday words, a concrete case for every
-  abstract claim, and lists counted out loud. `reel check` warns about code
-  names and long sentences.
-- Name a thing in plain words first. Show an identifier at most once, next
-  to its plain name (`card "the position is past the head" title="CursorAhead"`).
-- Highlight exactly what the voice names, when it names it, one thing at a
-  time: after the `say` line, start each highlight with `on="the words"`
-  (`focus #log on="grant log"`) and dim what was shown before.
-- Draw as you talk: `show #x on="the words"` brings an element in as it is
-  named, `play #seq to=2 on="…"` reveals a sequence diagram message by
-  message, and a flowchart with `reveal=steps fit=false` grows box by box
-  as each `walk … on="…"` explains it. Don't put everything on screen at
-  once.
-- Animate what changes (a pointer moves, a message is sent, a step runs).
-  Keep structure still. At most about seven labelled things on screen.
-- Show code only when its exact text is the point: an API shape, a config
-  key, a one-line fix. Then at most a few focused lines, in one scene.
-  `reel check` warns when more than 12 rows of code are on screen.
-- Aim for two to four minutes.
+### Explaining a system or algorithm
+1. **Hook:** Show the tension the design has to solve (load spike, race
+   condition, memory limit, or slow lookup).
+2. **Naive attempt:** Run one concrete input through the obvious approach until
+   it breaks visibly (`fail`, `{bad:503}`, overflowing queue).
+3. **The mechanism:** Name the 2–3 key parts right before they act, then step
+   the same input through the real design while data visibly moves (`send`,
+   `move`, `set`, `walk`, `play`).
+4. **Tradeoff or limit:** Push the design with one stress case (burst traffic,
+   cold cache, node failure) so the viewer sees where its boundaries are.
 
-## Write the script
+### Incident analysis / postmortem
+1. **Impact first:** Start at the moment users or alerts felt the incident,
+   with real timestamps and symptoms.
+2. **The trigger:** Trace one real failing request or event into the system.
+3. **Why safeguards missed it:** Pose the expectation ("The circuit breaker
+   should have tripped here — why didn't it?"), then `isolate` or `zoom` into
+   the exact condition that bypassed it.
+4. **The fix under replay:** Replay the same fault against the fixed system and
+   show the safeguard catching it.
+5. **Numbers and follow-ups:** Close with verified duration, blast radius, and
+   the concrete guardrail added.
 
-- Narration is optional. If the person wants a voice, add `voice phonon
-  Harper`: a local voice that needs no key or network after its first
-  download. For ElevenLabs instead, `voice elevenlabs VOICE_ID stability=0.4
-  style=0.3` with a built-in voice (Chris is `iP95p4xoKVk53GoZ742B`). Write every line as
-  `say "short heading" speak="what you would say to a colleague"`: the
-  heading shows at the top, and the spoken words show as subtitles at the
-  bottom. Repeat a scene's heading on each of its lines.
-- Write the narration as one talk, not a list of slides: link scenes ("So
-  here's how it worked before.", "Now the follower side."), use "you" and
-  contractions, and keep sentences short. Put a scene's first `say` right
-  after `clear` so the voice starts as the scene draws in. A `say` holds the next step until it has been spoken;
-  start a step with `with` to show it while the line is spoken
-  (`say "…"` then `with mark #diff lines=+12..+14`). Never
-  write an API key into a script; it comes from `ELEVENLABS_API_KEY` or a
-  local `.env`. If no key is available, render with `--mute`.
-- Use `==…==` for the two or three words of a heading that matter.
-- Colour carries meaning, so use it only for outcomes: `{bad:…}` for a
-  failure, a refusal or a bug; `{good:…}` for what passes or is fixed;
-  `{warn:…}` for a risk or something still pending; `{info:…}` rarely.
-  Mark the one or two words that carry the outcome ("one check is
-  {bad:failing}"), in a heading, a card, or the `speak=` words so the
-  subtitle shows it as it is said. `tone=bad` colours a whole metric, box
-  or card. Leave everything else grey; a frame full of colour says nothing.
-- Use `camera zoom` or a new scene instead of crowding.
-- Keep one picture across scenes when the story continues: leave out
-  `clear` to keep everything, or `clear keep="#flow"` to keep one diagram.
-  Kept elements glide to their new place while new ones draw in beside
-  them. Use `clear` alone only when the next idea needs a new picture.
-- Prefer components (`laptop`, `server`, `process`, `db`) and
-  blocks (`mermaid`, `array`, `timeline`, `metric`, `card`) over
-  hand-placed boxes.
-- Show everyday structures moving rather than describing them: `list` of
-  `node`s, `queue` of `cell`s, `lifo` (stack) of `block`s, hash maps and
-  other key/value data as a `table` of rows, and a `balancer` with servers inside. Write every item the scene
-  will need, then `show` one to add it where it is written and `leave` one
-  to remove it; the rest glide. Use `set #count "3 requests"` for a
-  value that changes, and `send #lb to=#s2` to move a request along one
-  connector. For a new structure, build it as a `define` on `flow=live`
-  containers, `sides=`, `table`, `arrow` and connectors, not as a one-off layout.
-- For numbers that change, animate the data instead of redrawing it:
-  `set #lat /checkout=240` eases one bar and counts its label, `sort #lat`
-  slides the bars into their new order, `mark #lat row=/checkout` moves the
-  one accent colour; a line chart with `threshold=` marks where it crosses.
-  A timeline fills in behind `play`, and `mark #tl span=orders` singles out
-  the slow part with a readout.
-- For mathematics, draw curves with a `plot` and move them: `plot #p
-  x=0..2pi y=-1.5..1.5 a=0` with `y = sin(x) + a*sin(3x)/3` under it,
-  then `play #p` traces it with a dot at the tip and `set #p a=1 for=2.5s`
-  morphs it while a readout counts. Parametric (`curve x=sin(3t)
-  y=sin(2t) t=0..2pi`), polar (`polar r = 1 + cos(theta)`) and complex
-  curves (`zeta(1/2 + i*t) t=0..30 marks=zeros`, drawn as (Re, Im)) work
-  the same. Stop a trace where the story pauses (`play #z to=t=14.13`),
-  pin an amber `note #z (0,0) "first zero"`, `isolate` the plot beside an
-  aside, `zoom #z x=-.35..0.55 y=-.45..0.45` to look closer, then `zoom
-  #z` back and `play #z` to finish.
-- For trees (search trees, heaps, file systems, org charts) use `tree`;
-  write every node the story will need and `show` the ones added later,
-  so nothing jumps. `walk #t n50 n70 n80` traces a search path.
-- For services, show load with `meter`, requests with `send ... reply`,
-  health checks with `ping`, and failures with `fail`/`recover`; keep a
-  failed element where it is rather than removing it.
-- For system design use the components: `breaker #cb "Closed"`,
-  `limiter #rl tokens=6`, `cache #c count=3` with `entry` rows. Send
-  labelled requests one at a time: `send #client to=#svc "req 1"
-  reply="{good:200}"` travels every hop and comes back on its own lane;
-  `send #client "req 5" reply="{bad:503}"` is refused at the breaker;
-  `send #client to=#api "req 1" spend=#rl` takes a token. Change state
-  with `set #cb "Open" tone=bad`, run its countdown with `play #cb for=4s`
-  (`with send …` meanwhile), `dim` the cut-off connector (give it a class),
-  refill with `set #rl/tokens "6" for=3s`, move a cache hit up with
-  `move #u7 first`, and say what happened in a readout label with `set`.
-- For branching, merging and rebasing use a `git` block and `play` it as
-  you talk: `play #g to=3 on="branch"`, then `play #g to=6`.
-- Anything can travel: `move #job to=#worker` takes any element to
-  another's place, and `send #client to=#api carry=#req reply` carries a
-  request card along the line and back. Prefer these to inventing dots.
-- To explain one part in depth, `isolate` it with an `aside` holding the
-  explanation, then `return` to the whole picture. Use `show #x from=#y`
-  so values visibly come from the scene.
-- When code is the point, read it with `file=` rather than pasting it, so
-  line numbers match, and focus the lines with `focus=` or `mark`; long
-  hunks fold down to those lines automatically.
-- Show where a number comes from: `metric "1024" label="records kept"
-  note="GRANT_LOG_RETAINED in share_grants.rs"`.
-- Keep the theme's look. Change a token only when asked, in a `tokens` block.
-- For a phone video, set `size 1080x1920`. Check the stills; add a
-  `style portrait` block only where the automatic fit is not good enough.
+## Visual pacing and narration
+
+- **One idea per scene**, at most about 45 spoken words. `reel check` warns
+  past that; split the scene instead of speeding up.
+- **Short headings, spoken detail.** Keep on-screen headings to eight words or
+  fewer, using `==…==` on the two or three words that matter. Put the full
+  spoken sentence in `speak="…"`, and repeat the scene's heading on each `say`
+  line in that scene.
+- **Draw and highlight as you speak.** Put a scene's first `say` right after
+  `clear` so narration starts as the scene draws in. Sync highlights and
+  reveals to spoken phrases with `on="the words"` (`focus #log on="grant log"`,
+  `show #x on="…"`, `play #seq to=2 on="…"`), and dim what you already covered.
+  Use `with` when a step should run during a `say` line.
+- **Animate what changes, keep structure still.** Keep at most about seven
+  labelled things on screen at once. Use `camera zoom`, `isolate` + `aside`, or
+  a new scene instead of crowding.
+- **Reserve colour for outcomes.** Use `{bad:…}` / `tone=bad` for failures and
+  bugs, `{good:…}` for passes and fixes, `{warn:…}` for risks, and leave
+  everything else neutral grey.
+- **Show code sparingly.** Only put code on screen when its exact text is the
+  point (an API shape, config key, or short fix), loaded via `file=` with
+  `focus=` or `mark` so line numbers stay real. Keep it to 12 rows or fewer.
+- **Write narration for the ear.** Talk to one teammate using "you" and
+  contractions, link scenes smoothly ("Now watch what happens on retry."), keep
+  sentences short with subject and verb up front, and never read code
+  identifiers aloud. Mix sentence lengths so the voiceover doesn't drone, and
+  skip stock "it's not X, it's Y" contrasts, aphorisms, and punchline tag
+  endings ("That's the bug.").
+
+## Choosing visual primitives
+
+Prefer built-in components and live structures over hand-placed boxes; see
+[the language reference](references/language.md) for full syntax and `reel ref`
+for every built-in kind, step, and property.
+
+- **Data structures & flows:** `list`, `queue`, `lifo`, `table`, `tree`, and
+  `git` blocks with `show`, `leave`, `move`, `walk`, and `play`.
+- **Services & resilience:** `laptop`, `server`, `process`, `db`, `balancer`,
+  `breaker`, `limiter`, `cache`, `meter`, `send … reply`, `ping`, `fail` /
+  `recover`, and `carry=`.
+- **Numbers & math:** bar/line charts and `timeline` animated via `set`,
+  `sort`, `mark`, and `play`; `plot` blocks for curves, `zoom`, and `note`.
+- **Narration & sizing:** Use `voice phonon Harper` for local offline speech
+  (or `voice elevenlabs VOICE_ID` with `ELEVENLABS_API_KEY` from the
+  environment or `.env`, never hardcoded). Set `size 1080x1920` for phone
+  videos.
 
 ## Check, look, render
 
 ```sh
-reel check video.reel                 # problems, plus each scene's length
-reel still -o stills video.reel       # one PNG per scene, after its steps
-reel check --timeline video.reel      # when every step starts and ends
-reel still --at 42.5 -o f.png video.reel  # the frame at a moment
+reel check video.reel                     # errors, warnings, and scene lengths
+reel check --timeline video.reel          # exact start/end time of every step
+reel still -o stills video.reel           # one PNG per scene, after its steps
+reel still --at 42.5 -o f.png video.reel  # inspect a single moment
 reel render -o video.mp4 video.reel
 ```
 
-Fix every error that `reel check` reports; each one names the line and
-suggests a fix. It also prints how long each scene plays, so you can aim for
-a length before rendering (`--json` has the same numbers). If you can view images, look at the stills before rendering
-and fix overlaps, empty scenes or text that runs off the frame.
-`reel check --explain '#id' video.reel` shows why an element looks the way
-it does. `reel ref` lists every kind, step and property. With narration,
-check the timeline: each highlight should start with the line about it.
+Fix every error `reel check` reports and check the timeline so each highlight
+lands on the words that name it. If you can view images, inspect the stills
+before rendering to catch overlaps, clipped text, or empty frames.
 
 ## Report
 
-Tell the person where the video is, how long it is, and what each scene
-shows in one line each. Say which numbers or outputs came from real runs and
-which, if any, are examples.
+Tell the user where the video is, how long it is, and what each scene covers in
+one line. State which numbers or outputs came from real runs and which are
+illustrative examples.
