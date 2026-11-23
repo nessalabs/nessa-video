@@ -94,6 +94,9 @@ names where it comes from.
     "head", "removed" not "tombstoned", "connects" not "subscribes".
 11. Labels on screen follow the same rules; a code name may appear once,
     small, beside its plain description, if a reviewer needs it.
+12. Vary sentence length so the voiceover doesn't drone, and skip stock
+    "it's not X, it's Y" contrasts, aphorisms, and punchline tag endings
+    ("That's the bug.").
 
 Before: "With a cursor, it sends only later records. Another incarnation, a
 position past the head, or one older than the log is refused."
@@ -107,7 +110,8 @@ at changes the log has already dropped."
 
 | Rule | From | Checked by |
 | --- | --- | --- |
-| Order: names, problem, concrete case, mechanism, edge cases, evidence | Tao; Pennington; pre-training; concrete first | the writer |
+| Order: hook on one concrete input, predict-and-run failure, name parts right before mechanism, fix on the same input, edge cases, evidence | Tao; Pennington; pre-training; concrete first | the writer |
+| Carry one named concrete input across the arc | concrete first; coherence | the writer |
 | One idea per scene, at most about 45 spoken words | segmenting; transient information | `reel check` warns |
 | Headings of 8 words or fewer; the sentence goes in `speak=` and shows as subtitles | redundancy | `reel check` warns |
 | Narration between 130 and 210 words a minute | speech rate | `reel check` warns, with a voice |
@@ -115,7 +119,7 @@ at changes the log has already dropped."
 | Animate change, keep structure still, about 7 labelled things at most | animation; coherence | the writer |
 | Show code only when its exact text is the point, at most 12 rows | coherence; Pennington | `reel check` warns |
 | Never read code names aloud; describe them | jargon; curse of knowledge | `reel check` warns |
-| Spoken sentences under 25 words, one idea each | listening; NPR | `reel check` warns |
+| Spoken sentences under 25 words, varied cadence, one idea each | listening; NPR | `reel check` warns |
 | At most two new terms per video, named once after a plain description | jargon; pre-training | the writer |
 | Two to four minutes; split a PR that does several things | length; Barnett | the writer |
 | No music under the voice | coherence | not supported, on purpose |
